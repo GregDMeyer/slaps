@@ -2,7 +2,7 @@
  *  This file is part of GASMat
  *  (C) Greg Meyer, 2018
  */
- 
+
 #include "gasmat.hpp"
 #include "catch.hpp"
 #include <memory>

@@ -2,7 +2,7 @@
 # for NERSC
 CXX = CC
 CXXFLAGS = -Wall
-DEBUGFLAGS = -g -O0
+DEBUGFLAGS = -g -O0 -DDEBUG
 
 EXE_TARGETS = matrix-tests vector-tests utils-tests
 

@@ -2,7 +2,7 @@
  *  This file is part of GASMat
  *  (C) Greg Meyer, 2018
  */
- 
+
 /*
  * This file gives a generic set of tests that is
  * oblivious to the data types. The data types are #define'd
@@ -81,6 +81,82 @@ TEST_CASE( "set size to bad values" TYPE_STR, "" ) {
 
     SECTION( "set to -10" ) {
       REQUIRE_THROWS_AS(v.allocate_elements(-10), std::length_error);
+    }
+  }
+}
+
+TEST_CASE( "operator[] method" TYPE_STR, "" ) {
+
+  IDX_T len(100);
+
+  Vec<IDX_T, DATA_T> v(len);
+  IDX_T start, end;
+  v.get_local_range(start, end);
+
+  DATA_T e = 2.718;
+
+  SECTION("start") {
+    v[start] = e;
+    REQUIRE(v[start] == e);
+  }
+
+  SECTION("middle") {
+    v[start + (end-start)/2] = e;
+    REQUIRE(v[start + (end-start)/2] == e);
+  }
+
+  SECTION("end") {
+    v[end-1] = e;
+    REQUIRE(v[end-1] == e);
+  }
+
+  /* exceptions */
+  SECTION("access globally low") {
+    REQUIRE_THROWS_AS(v[-1], std::out_of_range);
+  }
+
+  SECTION("access locally low") {
+    REQUIRE_THROWS_AS(v[start-1], std::out_of_range);
+  }
+
+  SECTION("access locally high") {
+    REQUIRE_THROWS_AS(v[end], std::out_of_range);
+  }
+
+  SECTION("access globally high") {
+    REQUIRE_THROWS_AS(v[len+1], std::out_of_range);
+  }
+}
+
+TEST_CASE( "set_all method" TYPE_STR, "" ) {
+
+  /* TODO: can we orthogonalize this test from the operator[] method? */
+
+  Vec<IDX_T, DATA_T> v(100);
+  IDX_T start, end;
+  v.get_local_range(start, end);
+
+  /* some subset of indices to check */
+  std::vector<IDX_T> test_idxs = {0, 1, 5, 21, 40, 99};
+  test_idxs.push_back(v.get_local_start());
+  test_idxs.push_back(v.get_local_end()-1);
+
+  SECTION( "value = 0" ) {
+    v.set_all(0);
+    for (auto idx : test_idxs) {
+      if (idx >= start && idx < end) {
+        REQUIRE(v[idx] == 0);
+      }
+    }
+  }
+
+  SECTION( "value = 3.14" ) {
+    v.set_all(3.14);
+    for (auto idx : test_idxs) {
+      if (idx >= start && idx < end) {
+        /* need to cast to DATA_T to avoid rounding errors */
+        REQUIRE(v[idx] == DATA_T(3.14));
+      }
     }
   }
 

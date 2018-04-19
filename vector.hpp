@@ -8,6 +8,7 @@
 #include <upcxx/upcxx.hpp>
 #include <stdexcept>
 #include "utils.hpp"
+#include <sstream>
 
 template <typename idx_t, typename data_t>
 class Vec {
@@ -29,6 +30,8 @@ public:
   idx_t get_local_size();
 
   /* get the start and end indices of the locally stored portion of the vector */
+  idx_t get_local_start();
+  idx_t get_local_end();
   void get_local_range(idx_t &start, idx_t &end);
 
   /*
@@ -37,12 +40,17 @@ public:
    */
   void allocate_elements(idx_t size);
 
+  /* set the whole vector the same value */
+  void set_all(data_t value);
+
+  /* get/set LOCAL data through array subscripting */
   /*
    * TODO: this is a design decision: do we want to abstract away remote data
    * setting, or do we want the programmer to be aware of the extra cost of setting
    * remote data? I think it's cool to abstract it away but it could bite anyone
    * who isn't careful in terms of performance.
    */
+  data_t& operator[](idx_t index);
 };
 
 /***** implementation *****/
@@ -79,7 +87,7 @@ void Vec<idx_t, data_t>::allocate_elements(idx_t size) {
   gptrs.resize(upcxx::rank_n());
 
   /* compute the partitioning and allocate local portion */
-  gptrs[upcxx::rank_me()] = upcxx::new_array<data_t>(_local_size);
+  gptrs[upcxx::rank_me()] = upcxx::new_array<data_t>(get_local_size());
   _local_data = gptrs[upcxx::rank_me()].local();
 
   /* broadcast global pointers */
@@ -100,7 +108,46 @@ idx_t Vec<idx_t, data_t>::get_local_size() {
 }
 
 template <typename idx_t, typename data_t>
+idx_t Vec<idx_t, data_t>::get_local_start() {
+  return _partitions[upcxx::rank_me()];
+}
+
+template <typename idx_t, typename data_t>
+idx_t Vec<idx_t, data_t>::get_local_end() {
+  return _partitions[upcxx::rank_me() + 1];
+}
+
+template <typename idx_t, typename data_t>
 void Vec<idx_t, data_t>::get_local_range(idx_t &start, idx_t &end) {
-  start = _partitions[upcxx::rank_me()];
-  end = _partitions[upcxx::rank_me() + 1];
+  start = get_local_start();
+  end = get_local_end();
+}
+
+template <typename idx_t, typename data_t>
+void Vec<idx_t, data_t>::set_all(data_t value) {
+  auto local_size = get_local_size();
+  for (idx_t i = 0; i < local_size; ++i) {
+    _local_data[i] = value;
+  }
+}
+
+template <typename idx_t, typename data_t>
+data_t& Vec<idx_t, data_t>::operator[](idx_t index) {
+
+/* bounds check in DEBUG mode */
+#ifdef DEBUG
+  idx_t start, end;
+  get_local_range(start, end);
+
+  std::ostringstream out;
+  if (index < start || index >= end) {
+    out << "requested index " << index;
+    out << " out of local range (" << start << ", " << end <<")";
+    out << " for processor " << upcxx::rank_me();
+    throw std::out_of_range(out.str());
+  }
+#endif
+
+  idx_t local_idx = index - get_local_start();
+  return _local_data[local_idx];
 }
