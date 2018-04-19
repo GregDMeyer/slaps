@@ -1,4 +1,8 @@
-
+/*
+ *  This file is part of GASMat
+ *  (C) Greg Meyer, 2018
+ */
+ 
 /*
  * This file gives a generic set of tests that is
  * oblivious to the data types. The data types are #define'd

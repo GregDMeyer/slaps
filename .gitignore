@@ -1,6 +1,5 @@
 *.o
 tests
 *.txt
-vector-tests
-matrix-tests
-tests
+*tests
+*.gch
