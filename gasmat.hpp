@@ -3,8 +3,7 @@
  *  (C) Greg Meyer, 2018
  */
 
-namespace gasmat
-{
+#pragma once
+
 #include "vector.hpp"
 #include "matrix.hpp"
-}
