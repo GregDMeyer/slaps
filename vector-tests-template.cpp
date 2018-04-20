@@ -161,3 +161,18 @@ TEST_CASE( "set_all method" TYPE_STR, "" ) {
   }
 
 }
+
+TEST_CASE( "norm method" TYPE_STR, "" ) {
+
+  Vec<IDX_T, DATA_T> v(100);
+  IDX_T start, end;
+  v.get_local_range(start, end);
+
+  for (IDX_T i = start; i < end; ++i) {
+    /* put some values in */
+    v[i] = i / 3.2;
+  }
+
+  REQUIRE(v.norm() == Approx(179.0682263482274));
+  
+}

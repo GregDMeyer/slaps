@@ -9,6 +9,7 @@
 #include <stdexcept>
 #include "utils.hpp"
 #include <sstream>
+#include <complex>
 
 template <typename idx_t, typename data_t>
 class Vec {
@@ -19,9 +20,20 @@ class Vec {
   data_t* _local_data;
 
 public:
+  /*==================================*/
+  /*** constructors and destructors ***/
   Vec() {};
   Vec(idx_t size);
   ~Vec();
+
+  /*
+   * allocate memory for the Vec. this only needs to be called if the vector
+   * was initialized using the default constructor
+   */
+  void allocate_elements(idx_t size);
+
+  /*===================================*/
+  /*** vector dimensions and indices ***/
 
   /* get the global dimension of the vector */
   idx_t get_size();
@@ -34,11 +46,8 @@ public:
   idx_t get_local_end();
   void get_local_range(idx_t &start, idx_t &end);
 
-  /*
-   * allocate memory for the Vec. this only needs to be called if the vector
-   * was initialized using the default constructor
-   */
-  void allocate_elements(idx_t size);
+  /*================================*/
+  /*** getting and setting values ***/
 
   /* set the whole vector the same value */
   void set_all(data_t value);
@@ -51,9 +60,19 @@ public:
    * who isn't careful in terms of performance.
    */
   data_t& operator[](idx_t index);
+
+  /*======================*/
+  /*** vector functions ***/
+
+  /* compute the 2-norm of the vector */
+  data_t norm();
+
 };
 
 /***** implementation *****/
+
+/*==================================*/
+/*** constructors and destructors ***/
 
 template <typename idx_t, typename data_t>
 Vec<idx_t, data_t>::Vec(idx_t size) {
@@ -97,6 +116,9 @@ void Vec<idx_t, data_t>::allocate_elements(idx_t size) {
 
 }
 
+/*===================================*/
+/*** vector dimensions and indices ***/
+
 template <typename idx_t, typename data_t>
 idx_t Vec<idx_t, data_t>::get_size() {
   return _size;
@@ -122,6 +144,9 @@ void Vec<idx_t, data_t>::get_local_range(idx_t &start, idx_t &end) {
   start = get_local_start();
   end = get_local_end();
 }
+
+/*================================*/
+/*** getting and setting values ***/
 
 template <typename idx_t, typename data_t>
 void Vec<idx_t, data_t>::set_all(data_t value) {
@@ -150,4 +175,22 @@ data_t& Vec<idx_t, data_t>::operator[](idx_t index) {
 
   idx_t local_idx = index - get_local_start();
   return _local_data[local_idx];
+}
+
+/*======================*/
+/*** vector functions ***/
+
+template <typename idx_t, typename data_t>
+data_t Vec<idx_t, data_t>::norm() {
+  /* first sum local values */
+  data_t local_sum = 0;
+  idx_t local_size = get_local_size();
+  for (idx_t i = 0; i < local_size; ++i) {
+    /* make sure we account for complex types */
+    local_sum += std::norm(_local_data[i]);
+  }
+  /* now allreduce the local sums */
+  data_t nrm2;
+  nrm2 = upcxx::allreduce(local_sum, std::plus<data_t>()).wait();
+  return std::sqrt(nrm2);
 }
