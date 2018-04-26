@@ -85,7 +85,7 @@ TEST_CASE( "set size to bad values" TYPE_STR, "" ) {
   }
 }
 
-TEST_CASE( "operator[] method" TYPE_STR, "" ) {
+TEST_CASE( "operator[] method (local tests)" TYPE_STR, "" ) {
 
   IDX_T len(100);
 
@@ -115,17 +115,39 @@ TEST_CASE( "operator[] method" TYPE_STR, "" ) {
     REQUIRE_THROWS_AS(v[-1], std::out_of_range);
   }
 
-  SECTION("access locally low") {
-    REQUIRE_THROWS_AS(v[start-1], std::out_of_range);
-  }
-
-  SECTION("access locally high") {
-    REQUIRE_THROWS_AS(v[end], std::out_of_range);
-  }
-
   SECTION("access globally high") {
     REQUIRE_THROWS_AS(v[len+1], std::out_of_range);
   }
+}
+
+TEST_CASE( "operator[] method (remote tests)" TYPE_STR, "" ) {
+
+  IDX_T len(100);
+
+  Vec<IDX_T, DATA_T> v(len);
+  IDX_T start, end;
+  v.get_local_range(start, end);
+
+  DATA_T e = 2.718;
+
+  SECTION("set value off process") {
+    /* set the first value on the next processor */
+    v[end % len] = e;
+    v.set_wait();
+
+    /* check that my first value has been set */
+    REQUIRE(v[start] == e);
+  }
+
+  SECTION("get value off process") {
+    /* set the first value on my process */
+    v[start] = e;
+    v.set_wait();
+
+    /* check that remote gives correct value */
+    REQUIRE(v[end % len] == e);
+  }
+
 }
 
 TEST_CASE( "set_all method" TYPE_STR, "" ) {
@@ -174,5 +196,5 @@ TEST_CASE( "norm method" TYPE_STR, "" ) {
   }
 
   REQUIRE(v.norm() == Approx(179.0682263482274));
-  
+
 }

@@ -8,6 +8,7 @@
 #include <upcxx/upcxx.hpp>
 #include <stdexcept>
 #include "utils.hpp"
+#include "proxy.hpp"
 #include <sstream>
 #include <complex>
 
@@ -15,14 +16,17 @@ template <typename idx_t, typename data_t>
 class Vec {
   idx_t _size = 0;
   idx_t _local_size;
+
   std::vector<idx_t> _partitions;
   std::vector<upcxx::global_ptr<data_t>> gptrs;
   data_t* _local_data;
 
+  upcxx::future<> put_fut;
+
 public:
   /*==================================*/
   /*** constructors and destructors ***/
-  Vec() {};
+  Vec() : put_fut(upcxx::make_future<>()) {};
   Vec(idx_t size);
   ~Vec();
 
@@ -52,14 +56,11 @@ public:
   /* set the whole vector the same value */
   void set_all(data_t value);
 
-  /* get/set LOCAL data through array subscripting */
-  /*
-   * TODO: this is a design decision: do we want to abstract away remote data
-   * setting, or do we want the programmer to be aware of the extra cost of setting
-   * remote data? I think it's cool to abstract it away but it could bite anyone
-   * who isn't careful in terms of performance.
-   */
-  data_t& operator[](idx_t index);
+  /* get/set data through array subscripting */
+  RData<idx_t, data_t> operator[](idx_t index);
+
+  /* wait for all remote values set with Vec[] to complete on all processes */
+  void set_wait();
 
   /*======================*/
   /*** vector functions ***/
@@ -69,18 +70,25 @@ public:
 
 };
 
+/*########################*/
 /***** implementation *****/
 
 /*==================================*/
 /*** constructors and destructors ***/
 
 template <typename idx_t, typename data_t>
-Vec<idx_t, data_t>::Vec(idx_t size) {
+Vec<idx_t, data_t>::Vec(idx_t size)
+: put_fut(upcxx::make_future())
+{
   allocate_elements(size);
 }
 
 template <typename idx_t, typename data_t>
 Vec<idx_t, data_t>::~Vec() {
+  /* make sure we don't get rid of the array before we're done writing to it */
+  set_wait();
+  upcxx::barrier();
+
   if (get_size()) { /* check that we already called allocate_elements */
     upcxx::delete_array(gptrs[upcxx::rank_me()]);
   }
@@ -157,24 +165,26 @@ void Vec<idx_t, data_t>::set_all(data_t value) {
 }
 
 template <typename idx_t, typename data_t>
-data_t& Vec<idx_t, data_t>::operator[](idx_t index) {
+RData<idx_t, data_t> Vec<idx_t, data_t>::operator[](idx_t index) {
 
 /* bounds check in DEBUG mode */
 #ifdef DEBUG
-  idx_t start, end;
-  get_local_range(start, end);
-
   std::ostringstream out;
-  if (index < start || index >= end) {
-    out << "requested index " << index;
-    out << " out of local range (" << start << ", " << end <<")";
-    out << " for processor " << upcxx::rank_me();
+  if (index < 0 || index >= get_size()) {
+    out << "requested index " << index << " out of range.";
     throw std::out_of_range(out.str());
   }
 #endif
 
-  idx_t local_idx = index - get_local_start();
-  return _local_data[local_idx];
+  auto source_proc = idx_to_proc(index, get_size());
+
+  return RData<idx_t, data_t>(gptrs[source_proc] + (index-_partitions[source_proc]), put_fut);
+}
+
+template <typename idx_t, typename data_t>
+void Vec<idx_t, data_t>::set_wait() {
+  put_fut.wait();
+  upcxx::barrier();
 }
 
 /*======================*/
