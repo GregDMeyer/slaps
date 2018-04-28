@@ -18,11 +18,61 @@
 TEST_CASE( "constructor and destructor" TYPE_STR, "" ) {
 
   SECTION( "default constructor" ) {
-    std::unique_ptr<Vec<IDX_T, DATA_T>> vp(new Vec<IDX_T, DATA_T>());
+    Vec<IDX_T, DATA_T> v;
+    REQUIRE(!v.allocated());
   }
 
   SECTION( "size constructor" ) {
-    std::unique_ptr<Vec<IDX_T, DATA_T>> vp(new Vec<IDX_T, DATA_T>(10));
+    Vec<IDX_T, DATA_T> v(10);
+    REQUIRE(v.allocated());
+  }
+
+}
+
+TEST_CASE( "copy and move" TYPE_STR, "" ) {
+
+  Vec<IDX_T, DATA_T> v1;
+
+  SECTION( "v1 default constructor" ) {
+
+  }
+
+  SECTION( "v1 allocated" ) {
+    v1.allocate_elements(50);
+    v1.set_all(1);
+  }
+
+  /* copy constructor */
+  Vec<IDX_T, DATA_T> v2 = v1;
+  REQUIRE(v2.allocated() == v1.allocated());
+
+  /* generic way to check they are equal. should probably figure a better way */
+  if (v1.allocated()) {
+    REQUIRE(v1.dot(v2) == 50);
+  }
+
+  /* move constructor */
+  Vec<IDX_T, DATA_T> v3 = std::move(v1);
+  REQUIRE(v3.allocated() == v2.allocated());
+  REQUIRE(!v1.allocated());
+
+  if (v2.allocated()) {
+    REQUIRE(v2.dot(v3) == 50);
+  }
+
+  /* copy assignment */
+  v1 = v2;
+  REQUIRE(v1.allocated() == v2.allocated());
+  if (v2.allocated()) {
+    REQUIRE(v1.dot(v2) == 50);
+  }
+
+  /* move assignment */
+  v1 = std::move(v2);
+  REQUIRE(v1.allocated() == v3.allocated());
+  REQUIRE(!v2.allocated());
+  if (v1.allocated()) {
+    REQUIRE(v1.dot(v3) == 50);
   }
 
 }
@@ -197,4 +247,31 @@ TEST_CASE( "norm method" TYPE_STR, "" ) {
 
   REQUIRE(v.norm() == Approx(179.0682263482274));
 
+}
+
+TEST_CASE( "dot method" TYPE_STR, "" ) {
+
+  Vec<IDX_T, DATA_T> v(100);
+
+  SECTION( "wrong size exception" ) {
+    Vec<IDX_T, DATA_T> b(50);
+    REQUIRE_THROWS_AS(v.dot(b), std::invalid_argument);
+  }
+
+  SECTION( "check value" ) {
+    Vec<IDX_T, DATA_T> b(100);
+
+    auto local_size = v.get_local_size();
+    auto start = v.get_local_start();
+    auto vlocal = v.get_local_array();
+    auto blocal = b.get_local_array();
+
+    for (IDX_T i = 0; i < local_size; ++i) {
+      /* put some values in */
+      vlocal[i] = (i+start)/3.2;
+      blocal[i] = 100 - (i+start)/3.2;
+    }
+
+    REQUIRE(v.dot(b) == Approx(122622.0703125));
+  }
 }
