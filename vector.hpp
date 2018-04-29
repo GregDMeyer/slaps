@@ -12,14 +12,14 @@
 #include <sstream>
 #include <complex>
 
-template <typename idx_t, typename data_t>
+template <typename I, typename D>
 class Vec {
 
 public:
   /*==================================*/
   /*** constructors and destructors ***/
   Vec() : _put_fut(upcxx::make_future<>()) {};
-  Vec(idx_t size);
+  Vec(I size);
   ~Vec();
 
   /* rule of three/five: since we have an explicit destructor we also
@@ -33,7 +33,7 @@ public:
    * allocate memory for the Vec. this only needs to be called if the vector
    * was initialized using the default constructor
    */
-  void allocate_elements(idx_t size);
+  void allocate_elements(I size);
 
   /* return true if Vec's memory has already been allocated */
   bool allocated() const;
@@ -42,15 +42,15 @@ public:
   /*** vector dimensions and indices ***/
 
   /* get the global dimension of the vector */
-  idx_t get_size() const;
+  I get_size() const;
 
   /* get the size of the locally stored portion of the vector */
-  idx_t get_local_size() const;
+  I get_local_size() const;
 
   /* get the start and end indices of the locally stored portion of the vector */
-  idx_t get_local_start() const;
-  idx_t get_local_end() const;
-  void get_local_range(idx_t &start, idx_t &end) const;
+  I get_local_start() const;
+  I get_local_end() const;
+  void get_local_range(I &start, I &end) const;
 
   /* throw an exception if the vector sizes of this and v do not match */
   void validate_dims(const Vec& v) const;
@@ -59,10 +59,10 @@ public:
   /*** getting and setting values ***/
 
   /* set the whole vector the same value */
-  void set_all(data_t value);
+  void set_all(D value);
 
   /* get/set data through array subscripting */
-  RData<idx_t, data_t> operator[](idx_t index);
+  RData<I, D> operator[](I index);
 
   /* wait for all remote values set with Vec[] to complete on all processes */
   void set_wait();
@@ -71,10 +71,10 @@ public:
   upcxx::future<> get_put_future() const;
 
   /* get a pointer to the local array holding local values */
-  data_t* get_local_array();
+  D* get_local_array();
 
   /* get a pointer to the local array holding local values (read-only) */
-  const data_t* get_local_array_read() const;
+  const D* get_local_array_read() const;
 
   /* copy all values from this vector to another vector v */
   void copy(Vec& v) const;
@@ -83,20 +83,20 @@ public:
   /*** vector functions ***/
 
   /* compute the 2-norm of the vector */
-  data_t norm() const;
+  D norm() const;
 
   /* compute the dot product of this and a vector b (this is conjugated and transposed) */
-  data_t dot(const Vec& b) const;
+  D dot(const Vec& b) const;
 
 private:
-  idx_t _size = 0;
-  idx_t _local_size;
-  idx_t _allocated = false;
+  I _size = 0;
+  I _local_size;
+  I _allocated = false;
 
-  std::vector<idx_t> _partitions;
-  std::vector<upcxx::global_ptr<data_t>> _gptrs;
-  upcxx::global_ptr<data_t> _local_gptr;
-  data_t* _local_data;
+  std::vector<I> _partitions;
+  std::vector<upcxx::global_ptr<D>> _gptrs;
+  upcxx::global_ptr<D> _local_gptr;
+  D* _local_data;
 
   upcxx::future<> _put_fut;
 
@@ -108,16 +108,16 @@ private:
 /*==================================*/
 /*** constructors and destructors ***/
 
-template <typename idx_t, typename data_t>
-Vec<idx_t, data_t>::Vec(idx_t size)
+template <typename I, typename D>
+Vec<I, D>::Vec(I size)
 : _put_fut(upcxx::make_future())
 {
   allocate_elements(size);
 }
 
 /* copy constructor */
-template <typename idx_t, typename data_t>
-Vec<idx_t, data_t>::Vec(const Vec& v)
+template <typename I, typename D>
+Vec<I, D>::Vec(const Vec& v)
 : _put_fut(v.get_put_future())
 {
   if (v.allocated()) {
@@ -127,8 +127,8 @@ Vec<idx_t, data_t>::Vec(const Vec& v)
 }
 
 /* move constructor */
-template <typename idx_t, typename data_t>
-Vec<idx_t, data_t>::Vec(Vec&& v) noexcept
+template <typename I, typename D>
+Vec<I, D>::Vec(Vec&& v) noexcept
 : _size(v._size)
 , _local_size(v._local_size)
 , _allocated(v._allocated)
@@ -143,16 +143,16 @@ Vec<idx_t, data_t>::Vec(Vec&& v) noexcept
   v._allocated = false;
 }
 
-template <typename idx_t, typename data_t>
-Vec<idx_t, data_t>& Vec<idx_t, data_t>::operator= (const Vec& v)
+template <typename I, typename D>
+Vec<I, D>& Vec<I, D>::operator= (const Vec& v)
 {
   Vec tmp(v); /* reuse copy constructor */
   *this = std::move(tmp);
   return *this;
 }
 
-template <typename idx_t, typename data_t>
-Vec<idx_t, data_t>& Vec<idx_t, data_t>::operator= (Vec&& v) noexcept
+template <typename I, typename D>
+Vec<I, D>& Vec<I, D>::operator= (Vec&& v) noexcept
 {
   if (this == &v) return *this;
 
@@ -183,8 +183,8 @@ Vec<idx_t, data_t>& Vec<idx_t, data_t>::operator= (Vec&& v) noexcept
   return *this;
 }
 
-template <typename idx_t, typename data_t>
-Vec<idx_t, data_t>::~Vec() {
+template <typename I, typename D>
+Vec<I, D>::~Vec() {
   /* make sure we don't get rid of the array before we're done writing to it */
   set_wait();
   upcxx::barrier();
@@ -194,8 +194,8 @@ Vec<idx_t, data_t>::~Vec() {
   }
 }
 
-template <typename idx_t, typename data_t>
-void Vec<idx_t, data_t>::allocate_elements(idx_t size) {
+template <typename I, typename D>
+void Vec<I, D>::allocate_elements(I size) {
 
   /* can only set the size once */
   if (allocated()) {
@@ -203,18 +203,18 @@ void Vec<idx_t, data_t>::allocate_elements(idx_t size) {
   }
 
   if (size <= 0) {
-    throw std::length_error("size must be >= 0");
+    throw std::length_error("size must be > 0");
   }
 
   _size = size;
-  _partitions = partition_array<idx_t>(get_size());
+  _partitions = partition_array<I>(get_size());
   _local_size = _partitions[upcxx::rank_me()+1] - _partitions[upcxx::rank_me()];
 
   /* allocate shared global memory and broadcast the pointers */
   _gptrs.resize(upcxx::rank_n());
 
   /* compute the partitioning and allocate local portion */
-  _local_gptr = upcxx::new_array<data_t>(get_local_size());
+  _local_gptr = upcxx::new_array<D>(get_local_size());
   _allocated = true;
   _gptrs[upcxx::rank_me()] = _local_gptr;
   _local_data = _gptrs[upcxx::rank_me()].local();
@@ -226,8 +226,8 @@ void Vec<idx_t, data_t>::allocate_elements(idx_t size) {
 
 }
 
-template <typename idx_t, typename data_t>
-bool Vec<idx_t, data_t>::allocated() const
+template <typename I, typename D>
+bool Vec<I, D>::allocated() const
 {
   return _allocated;
 }
@@ -235,34 +235,34 @@ bool Vec<idx_t, data_t>::allocated() const
 /*===================================*/
 /*** vector dimensions and indices ***/
 
-template <typename idx_t, typename data_t>
-idx_t Vec<idx_t, data_t>::get_size() const {
+template <typename I, typename D>
+I Vec<I, D>::get_size() const {
   return _size;
 }
 
-template <typename idx_t, typename data_t>
-idx_t Vec<idx_t, data_t>::get_local_size() const {
+template <typename I, typename D>
+I Vec<I, D>::get_local_size() const {
   return _local_size;
 }
 
-template <typename idx_t, typename data_t>
-idx_t Vec<idx_t, data_t>::get_local_start() const {
+template <typename I, typename D>
+I Vec<I, D>::get_local_start() const {
   return _partitions[upcxx::rank_me()];
 }
 
-template <typename idx_t, typename data_t>
-idx_t Vec<idx_t, data_t>::get_local_end() const {
+template <typename I, typename D>
+I Vec<I, D>::get_local_end() const {
   return _partitions[upcxx::rank_me() + 1];
 }
 
-template <typename idx_t, typename data_t>
-void Vec<idx_t, data_t>::get_local_range(idx_t &start, idx_t &end) const {
+template <typename I, typename D>
+void Vec<I, D>::get_local_range(I &start, I &end) const {
   start = get_local_start();
   end = get_local_end();
 }
 
-template <typename idx_t, typename data_t>
-void Vec<idx_t, data_t>::validate_dims(const Vec& v) const {
+template <typename I, typename D>
+void Vec<I, D>::validate_dims(const Vec& v) const {
   if (get_size() != v.get_size()) {
     std::ostringstream out;
     out << "vector sizes " << get_size() << " " << v.get_size();
@@ -274,17 +274,17 @@ void Vec<idx_t, data_t>::validate_dims(const Vec& v) const {
 /*================================*/
 /*** getting and setting values ***/
 
-template <typename idx_t, typename data_t>
-void Vec<idx_t, data_t>::set_all(data_t value) {
+template <typename I, typename D>
+void Vec<I, D>::set_all(D value) {
   auto local_size = get_local_size();
   auto local_array = get_local_array();
-  for (idx_t i = 0; i < local_size; ++i) {
+  for (I i = 0; i < local_size; ++i) {
     local_array[i] = value;
   }
 }
 
-template <typename idx_t, typename data_t>
-RData<idx_t, data_t> Vec<idx_t, data_t>::operator[](idx_t index) {
+template <typename I, typename D>
+RData<I, D> Vec<I, D>::operator[](I index) {
 
 /* bounds check in DEBUG mode */
 #ifdef DEBUG
@@ -297,11 +297,11 @@ RData<idx_t, data_t> Vec<idx_t, data_t>::operator[](idx_t index) {
 
   auto source_proc = idx_to_proc(index, get_size());
 
-  return RData<idx_t, data_t>(_gptrs[source_proc] + (index-_partitions[source_proc]), _put_fut);
+  return RData<I, D>(_gptrs[source_proc] + (index-_partitions[source_proc]), _put_fut);
 }
 
-template <typename idx_t, typename data_t>
-void Vec<idx_t, data_t>::set_wait() {
+template <typename I, typename D>
+void Vec<I, D>::set_wait() {
   _put_fut.wait();
   upcxx::barrier();
 
@@ -309,34 +309,34 @@ void Vec<idx_t, data_t>::set_wait() {
   _put_fut = upcxx::make_future();
 }
 
-template <typename idx_t, typename data_t>
-upcxx::future<> Vec<idx_t, data_t>::get_put_future() const {
+template <typename I, typename D>
+upcxx::future<> Vec<I, D>::get_put_future() const {
   return _put_fut;
 }
 
-template <typename idx_t, typename data_t>
-data_t* Vec<idx_t, data_t>::get_local_array() {
+template <typename I, typename D>
+D* Vec<I, D>::get_local_array() {
   /* TODO: should we make sure that we get this returned before we write to it again? */
   return _local_data;
 }
 
-template <typename idx_t, typename data_t>
-const data_t* Vec<idx_t, data_t>::get_local_array_read() const {
+template <typename I, typename D>
+const D* Vec<I, D>::get_local_array_read() const {
   return _local_data;
 }
 
-template <typename idx_t, typename data_t>
-void Vec<idx_t, data_t>::copy(Vec& v) const {
+template <typename I, typename D>
+void Vec<I, D>::copy(Vec& v) const {
 
   validate_dims(v);
 
   auto mine = get_local_array_read();
   auto other = v.get_local_array();
 
-  idx_t local_size = get_local_size();
+  I local_size = get_local_size();
 
   /* hopefully the compiler will optimize this to use memcpy */
-  for (idx_t i = 0; i < local_size; ++i) {
+  for (I i = 0; i < local_size; ++i) {
     other[i] = mine[i];
   }
 
@@ -345,45 +345,45 @@ void Vec<idx_t, data_t>::copy(Vec& v) const {
 /*======================*/
 /*** vector functions ***/
 
-template <typename idx_t, typename data_t>
-data_t Vec<idx_t, data_t>::norm() const {
+template <typename I, typename D>
+D Vec<I, D>::norm() const {
 
   /* first sum local values */
-  data_t local_sum = 0;
-  idx_t local_size = get_local_size();
+  D local_sum = 0;
+  I local_size = get_local_size();
   auto local_array = get_local_array_read();
 
   /* TODO: numerical errors accumulate! should sum pairwise! */
-  for (idx_t i = 0; i < local_size; ++i) {
+  for (I i = 0; i < local_size; ++i) {
     /* make sure we account for complex types */
     local_sum += std::norm(local_array[i]);
   }
 
   /* now allreduce the local sums */
-  data_t nrm2;
-  nrm2 = upcxx::allreduce(local_sum, std::plus<data_t>()).wait();
+  D nrm2;
+  nrm2 = upcxx::allreduce(local_sum, std::plus<D>()).wait();
   return std::sqrt(nrm2);
 }
 
-template <typename idx_t, typename data_t>
-data_t Vec<idx_t, data_t>::dot(const Vec& b) const {
+template <typename I, typename D>
+D Vec<I, D>::dot(const Vec& b) const {
 
   validate_dims(b);
 
   /* first sum local values */
-  data_t local_sum = 0;
-  idx_t local_size = get_local_size();
+  D local_sum = 0;
+  I local_size = get_local_size();
   auto local_array = get_local_array_read();
   auto other_array = b.get_local_array_read();
 
   /* TODO: need to be careful about complex numbers here */
-  for (idx_t i = 0; i < local_size; ++i) {
+  for (I i = 0; i < local_size; ++i) {
     /* TODO: make sure we account for complex types */
     local_sum += local_array[i] * other_array[i];
   }
 
   /* now allreduce the local sums */
-  data_t sum;
-  sum = upcxx::allreduce(local_sum, std::plus<data_t>()).wait();
+  D sum;
+  sum = upcxx::allreduce(local_sum, std::plus<D>()).wait();
   return sum;
 }

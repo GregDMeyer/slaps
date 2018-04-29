@@ -29,7 +29,7 @@ vector-tests.o: vector-tests.cpp vector-tests-template.cpp vector.hpp catch.hpp 
 
 utils-tests.o: utils-tests.cpp utils-tests-template.cpp catch.hpp utils.hpp
 
-matrix-tests.o: matrix-tests.cpp matrix.hpp vector.hpp catch.hpp
+matrix-tests.o: matrix-tests.cpp matrix-tests-template.cpp matrix.hpp vector.hpp catch.hpp utils.hpp
 
 clean:
 	$(RM) *.o $(EXE_TARGETS)

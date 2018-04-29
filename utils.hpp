@@ -3,6 +3,8 @@
  *  (C) Greg Meyer, 2018
  */
 
+#pragma once
+
 #include <upcxx/upcxx.hpp>
 #include <assert.h>
 
@@ -14,7 +16,7 @@ which defines this function in PetscSplitOwnership (see
 http://www.mcs.anl.gov/petsc/petsc-current/docs/manualpages/Sys/PetscSplitOwnership.html).
 */
 
-/* TODO: turn partitioner into a class */
+/* TODO: turn partitioner into a class? */
 
 /* isolate this function from upc++ */
 template <typename idx_t>
