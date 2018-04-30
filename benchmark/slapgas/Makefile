@@ -1,12 +1,12 @@
 
 # for NERSC
 CXX = CC
-CXXFLAGS = -Wall
+CXXFLAGS = -Wall -Wno-maybe-uninitialized
 
 ifdef DEBUG
-	OPTFLAGS = -O0 -DDEBUG -g
+	OPTFLAGS = -g -O0 -DDEBUG
 else
-	OPTFLAGS = -O3
+	OPTFLAGS = -O3 -DNDEBUG
 endif
 
 INCLUDE = -I../../include

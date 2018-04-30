@@ -8,10 +8,13 @@
 typedef unsigned int I;
 typedef double D;
 
+#define LARGE_PRIME 1046527
+
 void parse_args(int argc, char* argv[],
                 I& dim,
                 I& sparsity,
                 I& iterations,
+                DotImpl& impl,
                 bool& quiet);
 
 int main(int argc, char* argv[])
@@ -22,20 +25,22 @@ int main(int argc, char* argv[])
   bool do_print;
   I row_start, row_end;
 
+  I dim = 100, sparsity = 10, iterations = 100;
+  bool quiet = false;
+  DotImpl impl = DotImpl::Single;
+
   upcxx::init();
   if (upcxx::rank_me() == 0) do_print = true;
   else do_print = false;
 
-  I dim = 100, sparsity = 10, iterations = 100;
-  bool quiet = false;
-
-  parse_args(argc, argv, dim, sparsity, iterations, quiet);
+  parse_args(argc, argv, dim, sparsity, iterations, impl, quiet);
 
   if (!quiet && do_print) {
     std::cout << "Timing SLAPGAS MatVec." << std::endl;
     std::cout << " dim = " << dim << std::endl;
     std::cout << " sparsity = " << sparsity << std::endl;
     std::cout << " iterations = " << iterations << std::endl;
+    std::cout << " impl = " << std::vector<std::string>({"naive", "single", "block"})[int(impl)] << std::endl;
   }
 
   m.set_dimensions(dim, dim);
@@ -49,7 +54,7 @@ int main(int argc, char* argv[])
 
   for (I i = row_start; i < row_end; ++i) {
     /* start from a different spot each time */
-    for (I j = (91*i) % sparsity; j < dim; j += sparsity) {
+    for (I j = (LARGE_PRIME*i) % sparsity; j < dim; j += sparsity) {
       m.set_value(i, j, 1);
     }
   }
@@ -60,7 +65,7 @@ int main(int argc, char* argv[])
 
   auto tick = std::chrono::system_clock::now();
   for (I i = 0; i < iterations; ++i) {
-    m.dot(x,y);
+    m.dot(x, y, impl);
   }
   /* make sure we're all done */
   upcxx::barrier();
@@ -82,6 +87,7 @@ void parse_args(int argc, char* argv[],
                 I& dim,
                 I& sparsity,
                 I& iterations,
+                DotImpl& impl,
                 bool& quiet) {
 
   bool recognized = true;
@@ -101,6 +107,18 @@ void parse_args(int argc, char* argv[],
       }
       else if (!strcmp(argv[i], "-it")) {
         iterations = atoi(argv[i+1]);
+        i++;
+      }
+      else if (!strcmp(argv[i], "-impl")) {
+        if (!strcmp(argv[i+1], "naive")) {
+          impl = DotImpl::Naive;
+        }
+        else if (!strcmp(argv[i+1], "single")) {
+          impl = DotImpl::Single;
+        }
+        else if (!strcmp(argv[i+1], "block")) {
+          impl = DotImpl::Block;
+        }
         i++;
       }
       else {

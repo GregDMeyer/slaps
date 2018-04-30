@@ -19,16 +19,19 @@ class RData
 
   /* store a future for the get operation */
   upcxx::future<data_t> get_fut;
-  bool fetched;
+  bool fetched = false;
 
   /* future from the vector class that chains all put operations together */
-  upcxx::future<> &put_fut;
+  upcxx::future<>* put_fut_p = nullptr;
 
 public:
+  /* read-only with no put_fut */
+  RData() {};
+
   RData(upcxx::global_ptr<data_t> addr,
         upcxx::future<> &put_fut)
         : addr(addr)
-        , put_fut(put_fut)
+        , put_fut_p(&put_fut)
           {};
 
   /* asynchronously request the data */
@@ -55,8 +58,22 @@ public:
 
   /* set remote data with = */
   RData& operator= (const data_t &val) {
+
+    assert(put_fut_p);
+
     /* chain to put_fut, which came from our vec */
-    put_fut = upcxx::when_all(put_fut, upcxx::rput(val, addr));
+    *put_fut_p = upcxx::when_all(*put_fut_p, upcxx::rput(val, addr));
     return *this;
+  }
+
+  /* get global address this points to */
+  upcxx::global_ptr<data_t> get_address() {
+    return addr;
+  }
+
+  /* update to point to a new address */
+  void update (upcxx::global_ptr<data_t> new_addr) {
+    addr = new_addr;
+    fetched = false;
   }
 };

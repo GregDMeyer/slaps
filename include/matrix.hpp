@@ -23,6 +23,9 @@
 /* this enum defines different implementations of MatVec that we can use */
 enum class DotImpl { Naive, Single, Block };
 
+/* how many values to prefetch */
+#define DOT_BLOCK_SIZE 2048
+
 template <typename I, typename D>
 class Mat
 {
@@ -305,7 +308,7 @@ void Mat<I,D>::plusdot(Vec<I,D>& x, Vec<I,D>& y, DotImpl impl) const
   else if (impl == DotImpl::Single) {
     _plusdot_single(x, y);
   }
-  
+
 }
 
 /* Mat-vector sum product y = A*x + y */
@@ -326,10 +329,97 @@ void Mat<I,D>::_plusdot_naive(Vec<I,D>& x, Vec<I,D>& y) const
   }
 
   /* now remote part */
-
   for (I i = 0; i < local_size; ++i) {
     for (const auto& p : _remote[i]) {
+      /* x[p.first] implicitly gets the remote value */
       y_array[i] += p.second * x[p.first];
+    }
+  }
+
+}
+
+/* find the next value to prefetch, for _plusdot_single */
+template <typename I, typename D>
+static bool _prefetch_seek_next(I& pfch_row, I& pfch_row_idx, I local_size,
+                 const std::vector< std::vector< std::pair<I, D>>>& _remote)
+{
+  bool done = false;
+
+  pfch_row_idx++;
+
+  /* move on to the next row when we hit the end of one */
+  while (pfch_row_idx >= I(_remote[pfch_row].size())) {
+    pfch_row++;
+    if (pfch_row >= local_size) {
+      done = true;
+      break;
+    }
+
+    pfch_row_idx = 0;
+  }
+
+  return done;
+}
+
+/* Mat-vector sum product y = A*x + y */
+template <typename I, typename D>
+void Mat<I,D>::_plusdot_single(Vec<I,D>& x, Vec<I,D>& y) const
+{
+
+  bool prefetch_done = false;
+
+  auto x_array = x.get_local_array_read();
+  auto y_array = y.get_local_array();
+
+  I local_size = get_local_rows_size();
+
+  /* start fetching the x values for the first row of mat */
+  std::vector<RData<I,D>> prefetched;
+  I pfch_idx, pfch_read_idx = 0, pfch_row = 0, pfch_row_idx = -1;
+
+  prefetched.resize(DOT_BLOCK_SIZE);
+  for (pfch_idx = 0; pfch_idx < DOT_BLOCK_SIZE; ++pfch_idx) {
+    prefetch_done = _prefetch_seek_next(pfch_row, pfch_row_idx, local_size, _remote);
+    if (prefetch_done) break;
+
+    prefetched[pfch_idx].update(x[_remote[pfch_row][pfch_row_idx].first].get_address());
+    prefetched[pfch_idx].prefetch();
+  }
+  pfch_idx %= DOT_BLOCK_SIZE;
+
+  /* do the local matvec while those values are on their way */
+
+  for (I i = 0; i < local_size; ++i) {
+    for (const auto& p : _local[i]) {
+      y_array[i] += p.second * x_array[p.first];
+    }
+  }
+
+  /* now remote part */
+  D val;
+  for (I i = 0; i < local_size; ++i) {
+    I max_idx = _remote[i].size();
+    for (I j = 0; j < max_idx; ++j) {
+
+      /* get the prefetched value */
+      val = prefetched[pfch_read_idx].get();
+
+      /* prefetch the next one */
+      if (!prefetch_done) {
+        prefetch_done = _prefetch_seek_next(pfch_row, pfch_row_idx, local_size, _remote);
+        if (!prefetch_done) {
+          /* update it to point at the new address */
+          prefetched[pfch_idx].update(x[_remote[pfch_row][pfch_row_idx].first].get_address());
+          prefetched[pfch_idx].prefetch();
+        }
+      }
+
+      y_array[i] += _remote[i][j].second * val;
+
+      ++pfch_idx;
+      ++pfch_read_idx;
+      pfch_idx %= DOT_BLOCK_SIZE;
+      pfch_read_idx %= DOT_BLOCK_SIZE;
     }
   }
 
@@ -338,15 +428,6 @@ void Mat<I,D>::_plusdot_naive(Vec<I,D>& x, Vec<I,D>& y) const
 /* Mat-vector sum product y = A*x + y */
 template <typename I, typename D>
 void Mat<I,D>::_plusdot_block(Vec<I,D>& x, Vec<I,D>& y) const
-{
-
- /* TODO */
-
-}
-
-/* Mat-vector sum product y = A*x + y */
-template <typename I, typename D>
-void Mat<I,D>::_plusdot_single(Vec<I,D>& x, Vec<I,D>& y) const
 {
 
   /* TODO */

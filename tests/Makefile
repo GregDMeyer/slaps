@@ -26,11 +26,13 @@ utils-tests: test-main.o utils-tests.o catch.hpp
 
 CXXFLAGS += $(DEBUGFLAGS)
 
-vector-tests.o: vector-tests.cpp vector-tests-template.cpp ../include/vector.hpp catch.hpp ../include/utils.hpp
+vector-tests.o: vector-tests.cpp vector-tests-template.cpp catch.hpp \
+	../include/vector.hpp ../include/utils.hpp ../include/proxy.hpp
 
 utils-tests.o: utils-tests.cpp utils-tests-template.cpp catch.hpp ../include/utils.hpp
 
-matrix-tests.o: matrix-tests.cpp matrix-tests-template.cpp ../include/matrix.hpp ../include/vector.hpp catch.hpp ../include/utils.hpp
+matrix-tests.o: matrix-tests.cpp matrix-tests-template.cpp ../include/proxy.hpp \
+	../include/matrix.hpp ../include/vector.hpp catch.hpp ../include/utils.hpp
 
 clean:
 	$(RM) *.o $(EXE_TARGETS)
