@@ -1,5 +1,5 @@
 *.o
 tests
 *.txt
-*tests
+*-tests
 *.gch
