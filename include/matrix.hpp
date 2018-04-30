@@ -20,15 +20,24 @@
  * Implementing SpMSpM may require it.
  */
 
+/* this enum defines different implementations of MatVec that we can use */
+enum class DotImpl { Naive, Single, Block };
+
 template <typename I, typename D>
 class Mat
 {
 
 public:
+  /*==================================*/
+  /*** constructors and destructors ***/
+
   Mat() {};
 
   /* construct a Mat with dimensions M, N */
   Mat(I M, I N);
+
+  /*============================*/
+  /*** dimensions and indices ***/
 
   /* set dimensions of Mat. clears all values. */
   void set_dimensions(I M, I N);
@@ -44,6 +53,9 @@ public:
 
   /* get the range of rows stored locally */
   I get_local_rows_size() const;
+
+  /*=========================================*/
+  /*** value setting and memory allocation ***/
 
   /* reserve space for elements. */
   void reserve(I nonzero_diag, I nonzero_offdiag);
@@ -61,13 +73,32 @@ public:
   void set_offdiag_value(I row, I col, D value);
 
   /* TODO: reorganize our values to improve speed */
-  void neaten();
+  // void neaten();
+
+  /*============================*/
+  /*** matrix-vector products ***/
 
   /* Mat-vector product y = A*x */
-  void dot(Vec<I, D>& x, Vec<I, D>& y) const;
+  void dot(Vec<I,D>& x, Vec<I,D>& y) const;
+
+  /* Mat-vector product y = A*x using implementation `impl` */
+  void dot(Vec<I,D>& x, Vec<I,D>& y, DotImpl impl) const;
 
   /* Mat-vector sum product y = A*x + y */
-  void plusdot(Vec<I, D>& x, Vec<I, D>& y) const;
+  void plusdot(Vec<I,D>& x, Vec<I,D>& y) const;
+
+  /* Mat-vector sum product y = A*x + y using implementation `impl` */
+  void plusdot(Vec<I,D>& x, Vec<I,D>& y, DotImpl impl) const;
+
+  /* Naive implementation of plusdot with no prefetching */
+  void _plusdot_naive(Vec<I,D>& x, Vec<I,D>& y) const;
+
+  /* Optimized implementation of plusdot fetching blocks of x */
+  void _plusdot_block(Vec<I,D>& x, Vec<I,D>& y) const;
+
+  /* Optimized implementation of plusdot fetching individual values from x */
+  void _plusdot_single(Vec<I,D>& x, Vec<I,D>& y) const;
+
 
 private:
   I _M, _N;
@@ -82,11 +113,17 @@ private:
   std::vector<I> _row_partitions, _col_partitions;
 };
 
+/*==================================*/
+/*** constructors and destructors ***/
+
 template <typename I, typename D>
 Mat<I, D>::Mat(I M, I N)
 {
   set_dimensions(M, N);
 }
+
+/*============================*/
+/*** dimensions and indices ***/
 
 template <typename I, typename D>
 void Mat<I, D>::set_dimensions(I M, I N)
@@ -164,6 +201,9 @@ void Mat<I, D>::shrink_extra()
   }
 }
 
+/*=========================================*/
+/*** value setting and memory allocation ***/
+
 template <typename I, typename D>
 void Mat<I, D>::set_value(I row, I col, D value)
 {
@@ -209,17 +249,36 @@ void Mat<I, D>::set_offdiag_value(I row, I col, D value)
   _remote[row-row_start].push_back(std::make_pair(col, value));
 }
 
+/*============================*/
+/*** matrix-vector products ***/
+
 /* Mat-vector product y = A*x */
 template <typename I, typename D>
-void Mat<I, D>::dot(Vec<I, D>& x, Vec<I, D>& y) const
+void Mat<I, D>::dot(Vec<I,D>& x, Vec<I,D>& y) const
 {
   y.set_all(0);
-  plusdot(x, y);
+  /* TODO: choose the right implementation automatically based on sparsity */
+  plusdot(x, y, DotImpl::Naive);
+}
+
+/* Mat-vector product y = A*x */
+template <typename I, typename D>
+void Mat<I, D>::dot(Vec<I,D>& x, Vec<I,D>& y, DotImpl impl) const
+{
+  y.set_all(0);
+  plusdot(x, y, impl);
 }
 
 /* Mat-vector sum product y = A*x + y */
 template <typename I, typename D>
-void Mat<I, D>::plusdot(Vec<I, D>& x, Vec<I, D>& y) const
+void Mat<I,D>::plusdot(Vec<I,D>& x, Vec<I,D>& y) const
+{
+  plusdot(x, y, DotImpl::Naive);
+}
+
+/* Mat-vector sum product y = A*x + y */
+template <typename I, typename D>
+void Mat<I,D>::plusdot(Vec<I,D>& x, Vec<I,D>& y, DotImpl impl) const
 {
 
   I M, N;
@@ -237,13 +296,29 @@ void Mat<I, D>::plusdot(Vec<I, D>& x, Vec<I, D>& y) const
     throw std::invalid_argument(out.str());
   }
 
+  if (impl == DotImpl::Naive) {
+    _plusdot_naive(x, y);
+  }
+  else if (impl == DotImpl::Block) {
+    _plusdot_block(x, y);
+  }
+  else if (impl == DotImpl::Single) {
+    _plusdot_single(x, y);
+  }
+  
+}
+
+/* Mat-vector sum product y = A*x + y */
+template <typename I, typename D>
+void Mat<I,D>::_plusdot_naive(Vec<I,D>& x, Vec<I,D>& y) const
+{
+
   /* first do the local matvec */
   auto x_array = x.get_local_array_read();
   auto y_array = y.get_local_array();
 
   I local_size = get_local_rows_size();
 
-  /* TODO: see if we can/should optimize this loop */
   for (I i = 0; i < local_size; ++i) {
     for (const auto& p : _local[i]) {
       y_array[i] += p.second * x_array[p.first];
@@ -252,11 +327,28 @@ void Mat<I, D>::plusdot(Vec<I, D>& x, Vec<I, D>& y) const
 
   /* now remote part */
 
-  /* TODO: this definitely will be optimized */
   for (I i = 0; i < local_size; ++i) {
     for (const auto& p : _remote[i]) {
       y_array[i] += p.second * x[p.first];
     }
   }
+
+}
+
+/* Mat-vector sum product y = A*x + y */
+template <typename I, typename D>
+void Mat<I,D>::_plusdot_block(Vec<I,D>& x, Vec<I,D>& y) const
+{
+
+ /* TODO */
+
+}
+
+/* Mat-vector sum product y = A*x + y */
+template <typename I, typename D>
+void Mat<I,D>::_plusdot_single(Vec<I,D>& x, Vec<I,D>& y) const
+{
+
+  /* TODO */
 
 }
