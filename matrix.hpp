@@ -37,10 +37,13 @@ public:
   void get_dimensions(I& M, I& N) const;
 
   /* get the range of rows stored locally */
-  void get_local_range(I& start, I& end) const;
+  void get_local_rows(I& start, I& end) const;
+
+  /* get the range of cols corresponding to local part of the vector */
+  void get_diag_cols(I& start, I& end) const;
 
   /* get the range of rows stored locally */
-  I get_local_size() const;
+  I get_local_rows_size() const;
 
   /* reserve space for elements. */
   void reserve(I nonzero_diag, I nonzero_offdiag);
@@ -76,7 +79,7 @@ private:
   /* vector storing remote (off-diagonal) Mat elements */
   std::vector< std::vector< std::pair<I, D>>> _remote;
 
-  std::vector<I> _partitions;
+  std::vector<I> _row_partitions, _col_partitions;
 };
 
 template <typename I, typename D>
@@ -97,8 +100,9 @@ void Mat<I, D>::set_dimensions(I M, I N)
   _N = N;
 
   /* compute local rows */
-  _partitions = partition_array(M);
-  _local_rows = _partitions[upcxx::rank_me()+1] - _partitions[upcxx::rank_me()];
+  _row_partitions = partition_array(M);
+  _col_partitions = partition_array(N);
+  _local_rows = _row_partitions[upcxx::rank_me()+1] - _row_partitions[upcxx::rank_me()];
 
   /* clear anything already in the Mat */
   _local.clear();
@@ -118,17 +122,24 @@ void Mat<I, D>::get_dimensions(I& M, I& N) const
 }
 
 template <typename I, typename D>
-void Mat<I, D>::get_local_range(I& start, I& end) const
+void Mat<I, D>::get_local_rows(I& start, I& end) const
 {
-  start = _partitions[upcxx::rank_me()];
-  end = _partitions[upcxx::rank_me() + 1];
+  start = _row_partitions[upcxx::rank_me()];
+  end = _row_partitions[upcxx::rank_me() + 1];
 }
 
 template <typename I, typename D>
-I Mat<I, D>::get_local_size() const
+void Mat<I, D>::get_diag_cols(I& start, I& end) const
+{
+  start = _col_partitions[upcxx::rank_me()];
+  end = _col_partitions[upcxx::rank_me() + 1];
+}
+
+template <typename I, typename D>
+I Mat<I, D>::get_local_rows_size() const
 {
   I start, end;
-  get_local_range(start, end);
+  get_local_rows(start, end);
   return end-start;
 }
 
@@ -137,7 +148,7 @@ template <typename I, typename D>
 void Mat<I, D>::reserve(I nonzero_diag, I nonzero_offdiag)
 {
 
-  for (I i = 0; i < get_local_size(); ++i) {
+  for (I i = 0; i < get_local_rows_size(); ++i) {
     _local[i].reserve(nonzero_diag);
     _remote[i].reserve(nonzero_offdiag);
   }
@@ -147,7 +158,7 @@ void Mat<I, D>::reserve(I nonzero_diag, I nonzero_offdiag)
 template <typename I, typename D>
 void Mat<I, D>::shrink_extra()
 {
-  for (I i = 0; i < get_local_size(); ++i) {
+  for (I i = 0; i < get_local_rows_size(); ++i) {
     _local[i].shrink_to_fit();
     _remote[i].shrink_to_fit();
   }
@@ -157,7 +168,7 @@ template <typename I, typename D>
 void Mat<I, D>::set_value(I row, I col, D value)
 {
   I start, end;
-  get_local_range(start, end);
+  get_diag_cols(start, end);
 
   if (col >= start && col < end) {
     set_diag_value(row, col, value);
@@ -170,29 +181,32 @@ void Mat<I, D>::set_value(I row, I col, D value)
 template <typename I, typename D>
 void Mat<I, D>::set_diag_value(I row, I col, D value)
 {
-  I start, end;
-  get_local_range(start, end);
+  I row_start, row_end, col_start, col_end;
+  get_local_rows(row_start, row_end);
+  get_diag_cols(col_start, col_end);
 
 #ifdef DEBUG
-  assert(row >= start && row < end);
-  assert(col >= start && col < end);
+  assert(row >= row_start && row < row_end);
+  assert(col >= col_start && col < col_end);
 #endif
 
-  _local[row-start].push_back(std::make_pair(col-start, value));
+  _local[row-row_start].push_back(std::make_pair(col-col_start, value));
 }
 
 template <typename I, typename D>
 void Mat<I, D>::set_offdiag_value(I row, I col, D value)
 {
-  I start, end;
-  get_local_range(start, end);
+  I row_start, row_end;
+  get_local_rows(row_start, row_end);
 
   #ifdef DEBUG
-    assert(row >= start && row < end);
-    assert(col < start || col >= end);
+    I col_start, col_end;
+    get_diag_cols(col_start, col_end);
+    assert(row >= row_start && row < row_end);
+    assert(col < col_start || col >= col_end);
   #endif
 
-  _remote[row-start].push_back(std::make_pair(col, value));
+  _remote[row-row_start].push_back(std::make_pair(col, value));
 }
 
 /* Mat-vector product y = A*x */
@@ -208,11 +222,26 @@ template <typename I, typename D>
 void Mat<I, D>::plusdot(Vec<I, D>& x, Vec<I, D>& y) const
 {
 
+  I M, N;
+  get_dimensions(M, N);
+  if (x.get_size() != N) {
+    std::ostringstream out;
+    out << "vector x size " << x.get_size() << " does not match ";
+    out << "matrix row length " << N;
+    throw std::invalid_argument(out.str());
+  }
+  if (y.get_size() != M) {
+    std::ostringstream out;
+    out << "vector y size " << y.get_size() << " does not match ";
+    out << "matrix column length " << M;
+    throw std::invalid_argument(out.str());
+  }
+
   /* first do the local matvec */
   auto x_array = x.get_local_array_read();
   auto y_array = y.get_local_array();
 
-  I local_size = _local.size();
+  I local_size = get_local_rows_size();
 
   /* TODO: see if we can/should optimize this loop */
   for (I i = 0; i < local_size; ++i) {

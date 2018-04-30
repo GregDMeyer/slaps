@@ -25,6 +25,17 @@ TEST_CASE( "partition array. n=size, r=ranks. " TYPE_STR, "" ) {
     REQUIRE(p[1] == 4);
   }
 
+  SECTION( "n=10, r=3" ) {
+    auto p = _partition_array(10, 3);
+
+    REQUIRE(p.size() == 4);
+
+    REQUIRE(p[0] == 0);
+    REQUIRE(p[1] == 4);
+    REQUIRE(p[2] == 7);
+    REQUIRE(p[3] == 10);
+  }
+
   SECTION( "n=500, r=16" ) {
     auto p = _partition_array(500, 16);
 

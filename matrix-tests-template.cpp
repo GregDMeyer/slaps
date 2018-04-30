@@ -47,58 +47,412 @@ TEST_CASE( "set values" TYPE_STR, "" ) {
   Mat<IDX_T, DATA_T> m;
   IDX_T start, end;
 
-  m.set_dimensions(10, 15);
-  m.reserve(10, 5);
-  m.get_local_range(start, end);
-  for (IDX_T i = 0; i < 45; ++i) {
-    IDX_T idx = i%10;
-    IDX_T idy = (i^5) % 15;
-    if (idx >= start && idx < end) {
-      m.set_value(idx, idy, std::sin(i));
+  SECTION( "scattered" ) {
+    m.set_dimensions(10, 15);
+    m.reserve(10, 5);
+    m.get_local_rows(start, end);
+    for (IDX_T i = 0; i < 45; ++i) {
+      IDX_T idx = i%10;
+      IDX_T idy = (i^5) % 15;
+      if (idx >= start && idx < end) {
+        m.set_value(idx, idy, std::sin(i));
+      }
     }
+    m.shrink_extra();
   }
 
-  m.shrink_extra();
+  SECTION( "diag 11x23" ) {
+    IDX_T row_start, row_end;
+    m.set_dimensions(11, 23);
+    m.get_diag_cols(start, end);
+    m.get_local_rows(row_start, row_end);
+    for (IDX_T i = start; i < end; ++i) {
+      m.set_diag_value(row_start + ((i-row_start)%(row_end-row_start)), i, std::sin(i));
+    }
+    m.shrink_extra();
+  }
+
+  SECTION( "diag 23x11" ) {
+    IDX_T row_start, row_end;
+    m.set_dimensions(23, 11);
+    m.get_diag_cols(start, end);
+    m.get_local_rows(row_start, row_end);
+    for (IDX_T i = row_start; i < row_end; ++i) {
+      m.set_diag_value(i, start + ((i-start)%(end-start)), std::sin(i));
+    }
+    m.shrink_extra();
+  }
 
 }
 
-TEST_CASE( "dot" TYPE_STR, "" ) {
+TEST_CASE( "15x15 dot" TYPE_STR, "" ) {
 
   Mat<IDX_T, DATA_T> m;
   Vec<IDX_T, DATA_T> x, y;
   IDX_T start, end;
 
-  m.set_dimensions(10, 15);
-  m.get_local_range(start, end);
-  for (IDX_T i = 0; i < 45; ++i) {
-    IDX_T idx = i%10;
-    IDX_T idy = (i^5) % 15;
-    if (idx >= start && idx < end) {
-      m.set_value(idx, idy, std::sin(i));
+  std::vector<DATA_T> correct;
+
+  m.set_dimensions(15, 15);
+  m.get_local_rows(start, end);
+
+  x.allocate_elements(15);
+  y.allocate_elements(15);
+
+  auto xarr = x.get_local_array();
+
+  SECTION("diagonal identity") {
+    for (IDX_T i = start; i < end; ++i) {
+      m.set_value(i, i, 1);
+    }
+
+    x.set_all(0);
+    correct.resize(15);
+    for (IDX_T i = start; i < end; ++i) {
+      xarr[i-start] = i;
+      correct[i] = i;
+    }
+    upcxx::barrier();
+
+    m.dot(x, y);
+    upcxx::barrier();
+
+    for (IDX_T i = start; i < end; ++i) {
+      CHECK(y[i] == Approx(correct[i]));
     }
   }
 
-  x.allocate_elements(15);
-  y.allocate_elements(10);
+  SECTION("diagonal index") {
+    for (IDX_T i = start; i < end; ++i) {
+      m.set_value(i, i, i);
+    }
+
+    x.set_all(0);
+    correct.resize(15);
+    for (IDX_T i = start; i < end; ++i) {
+      xarr[i-start] = i;
+      correct[i] = i*i;
+    }
+    upcxx::barrier();
+
+    m.dot(x, y);
+    upcxx::barrier();
+
+    for (IDX_T i = start; i < end; ++i) {
+      CHECK(y[i] == Approx(correct[i]));
+    }
+  }
+
+  SECTION ("off-diagonal") {
+    for (IDX_T i = start; i < end; ++i) {
+      m.set_value(i, (end-start + i) % 15, 1);
+    }
+
+    x.set_all(0);
+    correct.resize(15);
+    for (IDX_T i = start; i < end; ++i) {
+      xarr[i-start] = i;
+      correct[i] = (i + (end-start))%15;
+    }
+    upcxx::barrier();
+
+    m.dot(x, y);
+    upcxx::barrier();
+
+    for (IDX_T i = start; i < end; ++i) {
+      CHECK(y[i] == Approx(correct[i]));
+    }
+  }
+
+  SECTION ("off-diagonal index") {
+    for (IDX_T i = start; i < end; ++i) {
+      m.set_value(i, (end-start + i) % 15, (end-start + i) % 15);
+    }
+
+    x.set_all(0);
+    correct.resize(15);
+    for (IDX_T i = start; i < end; ++i) {
+      xarr[i-start] = i;
+      correct[i] = (i + (end-start))%15;
+      correct[i] *= correct[i];
+    }
+    upcxx::barrier();
+
+    m.dot(x, y);
+    upcxx::barrier();
+
+    for (IDX_T i = start; i < end; ++i) {
+      CHECK(y[i] == Approx(correct[i]));
+    }
+  }
+
+  SECTION ("full") {
+    for (IDX_T i = start; i < end; ++i) {
+      m.set_value(i, i, 1);
+      m.set_value(i, (end-start + i) % 15, 1);
+    }
+
+    x.set_all(0);
+    correct.resize(15);
+    for (IDX_T i = start; i < end; ++i) {
+      xarr[i-start] = i;
+      correct[i] = (i + (end-start))%15;
+      correct[i] += i;
+    }
+    upcxx::barrier();
+
+    m.dot(x, y);
+    upcxx::barrier();
+
+    for (IDX_T i = start; i < end; ++i) {
+      CHECK(y[i] == Approx(correct[i]));
+    }
+  }
+
+}
+
+TEST_CASE( "11x13 dot" TYPE_STR, "" ) {
+
+  IDX_T M = 11, N = 13;
+
+  Mat<IDX_T, DATA_T> m;
+  Vec<IDX_T, DATA_T> x, y;
+  IDX_T start, end;
+
+  std::vector<DATA_T> correct;
+
+  m.set_dimensions(M, N);
+  m.get_local_rows(start, end);
+
+  x.allocate_elements(N);
+  y.allocate_elements(M);
 
   IDX_T xstart, xend;
   x.get_local_range(xstart, xend);
   auto xarr = x.get_local_array();
 
-  for (IDX_T i = xstart; i < xend; ++i) {
-    xarr[i - xstart] = i + 1;
+  SECTION("diagonal_identity") {
+    for (IDX_T i = 0; i < end-start; ++i) {
+      m.set_value(start + i, xstart + i, 1);
+    }
+
+    x.set_all(0);
+    for (IDX_T i = 0; i < xend - xstart; ++i) {
+      xarr[i] = xstart + i;
+    }
+    upcxx::barrier();
+
+    correct.resize(M);
+    for (IDX_T i = 0; i < end - start; ++i) {
+      correct[start+i] = xstart + i;
+    }
+
+    m.dot(x, y);
+    upcxx::barrier();
+
+    for (IDX_T i = start; i < end; ++i) {
+      CHECK(y[i] == Approx(correct[i]));
+    }
   }
-  upcxx::barrier();
 
-  m.dot(x, y);
+  SECTION("diagonal_index") {
+    for (IDX_T i = 0; i < end-start; ++i) {
+      m.set_value(start + i, xstart + i, start + i);
+    }
 
-  upcxx::barrier();
+    x.set_all(0);
+    for (IDX_T i = 0; i < xend - xstart; ++i) {
+      xarr[i] = 1;
+    }
+    upcxx::barrier();
 
-  std::vector<DATA_T> correct = { -9.90448331, -16.34697867, 3.52624249, 6.72029531,
-          2.29325781, 0.48767344, -5.57498372, -4.77166363, 11.85030538, 4.73919607};
+    correct.resize(M);
+    for (IDX_T i = start; i < end; ++i) {
+      correct[i] = i;
+    }
 
-  for (IDX_T i = 0; i < 10; ++i) {
-    REQUIRE(y[i] == Approx(correct[i]));
+    m.dot(x, y);
+    upcxx::barrier();
+
+    for (IDX_T i = start; i < end; ++i) {
+      CHECK(y[i] == Approx(correct[i]));
+    }
+  }
+
+  /* TODO: fix this test */
+  // SECTION ("off-diagonal") {
+  //   for (IDX_T i = 0; i < end - start; ++i) {
+  //     m.set_value(start + i, (xend + i) % N, 1);
+  //   }
+  //
+  //   x.set_all(0);
+  //   correct.resize(M);
+  //   for (IDX_T i = 0; i < end - start; ++i) {
+  //     xarr[i] = xstart + i;
+  //     correct[start+i] = (xend+i) % N;
+  //   }
+  //   upcxx::barrier();
+  //
+  //   m.dot(x, y);
+  //   upcxx::barrier();
+  //
+  //   for (IDX_T i = start; i < end; ++i) {
+  //     CHECK(y[i] == Approx(correct[i]));
+  //   }
+  // }
+
+  SECTION ("full") {
+    for (IDX_T i = 0; i < 45; ++i) {
+      IDX_T idx = i%M;
+      IDX_T idy = (i^5) % N;
+      if (idx >= start && idx < end) {
+        m.set_value(idx, idy, 1);
+      }
+    }
+
+    for (IDX_T i = xstart; i < xend; ++i) {
+      xarr[i - xstart] = i+1;
+    }
+
+    correct.resize(M);
+    for (IDX_T i = start; i < end; ++i) {
+      IDX_T ii = i;
+      correct[i] = 0;
+      while (ii < 45) {
+        correct[i] += ((ii^5) % N)+1;
+        ii += M;
+      }
+    }
+    upcxx::barrier();
+
+    m.dot(x, y);
+    upcxx::barrier();
+
+    for (IDX_T i = start; i < end; ++i) {
+      CHECK(y[i] == Approx(correct[i]));
+    }
+  }
+
+}
+
+TEST_CASE( "13x11 dot" TYPE_STR, "" ) {
+
+  IDX_T M = 13, N = 11;
+
+  Mat<IDX_T, DATA_T> m;
+  Vec<IDX_T, DATA_T> x, y;
+  IDX_T start, end;
+
+  std::vector<DATA_T> correct;
+
+  m.set_dimensions(M, N);
+  m.get_local_rows(start, end);
+
+  x.allocate_elements(N);
+  y.allocate_elements(M);
+
+  IDX_T xstart, xend;
+  x.get_local_range(xstart, xend);
+  auto xarr = x.get_local_array();
+
+  SECTION("diagonal_identity") {
+    for (IDX_T i = 0; i < xend-xstart; ++i) {
+      m.set_value(start + i, xstart + i, 1);
+    }
+
+    x.set_all(0);
+    for (IDX_T i = 0; i < xend - xstart; ++i) {
+      xarr[i] = xstart + i;
+    }
+    upcxx::barrier();
+
+    correct.resize(M);
+    for (IDX_T i = 0; i < xend - xstart; ++i) {
+      correct[start+i] = xstart + i;
+    }
+
+    m.dot(x, y);
+    upcxx::barrier();
+
+    for (IDX_T i = start; i < end; ++i) {
+      CHECK(y[i] == Approx(correct[i]));
+    }
+  }
+
+  SECTION("diagonal_index") {
+    for (IDX_T i = 0; i < xend-xstart; ++i) {
+      m.set_value(start + i, xstart + i, start + i);
+    }
+
+    x.set_all(0);
+    for (IDX_T i = 0; i < xend - xstart; ++i) {
+      xarr[i] = 1;
+    }
+    upcxx::barrier();
+
+    correct.resize(M);
+    for (IDX_T i = 0; i < xend-xstart; ++i) {
+      correct[start+i] = start + i;
+    }
+
+    m.dot(x, y);
+    upcxx::barrier();
+
+    for (IDX_T i = start; i < end; ++i) {
+      CHECK(y[i] == Approx(correct[i]));
+    }
+  }
+
+  SECTION ("off-diagonal") {
+    for (IDX_T i = 0; i < xend - xstart; ++i) {
+      m.set_value(start + i, (xend + i) % N, 1);
+    }
+
+    x.set_all(0);
+    correct.resize(M);
+    for (IDX_T i = xstart; i < xend; ++i) {
+      xarr[i-xstart] = i;
+    }
+    for (IDX_T i = 0; i < xend - xstart; ++i) {
+      correct[start+i] = (xend+i) % N;
+    }
+
+    upcxx::barrier();
+
+    m.dot(x, y);
+    upcxx::barrier();
+
+    for (IDX_T i = start; i < end; ++i) {
+      CHECK(y[i] == Approx(correct[i]));
+    }
+  }
+
+}
+
+TEST_CASE( "dot exceptions" TYPE_STR, "" ) {
+
+  Mat<IDX_T, DATA_T> m;
+  Vec<IDX_T, DATA_T> x, y;
+
+  SECTION( "bad x dim" ) {
+    m.set_dimensions(10,20);
+    x.allocate_elements(12);
+    y.allocate_elements(10);
+    REQUIRE_THROWS_AS( m.dot(x, y), std::invalid_argument );
+  }
+
+  SECTION( "bad y dim" ) {
+    m.set_dimensions(10,20);
+    x.allocate_elements(20);
+    y.allocate_elements(12);
+    REQUIRE_THROWS_AS( m.dot(x, y), std::invalid_argument );
+  }
+
+  SECTION( "bad x and y dim" ) {
+    m.set_dimensions(10,20);
+    x.allocate_elements(12);
+    y.allocate_elements(13);
+    REQUIRE_THROWS_AS( m.dot(x, y), std::invalid_argument );
   }
 
 }
