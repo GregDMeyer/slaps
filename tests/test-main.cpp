@@ -1,5 +1,5 @@
 /*
- *  This file is part of GASMat
+ *  This file is part of SLAPGAS
  *  (C) Greg Meyer, 2018
  */
 

@@ -1,9 +1,9 @@
 /*
- *  This file is part of GASMat
+ *  This file is part of SLAPGAS
  *  (C) Greg Meyer, 2018
  */
 
- #include "gasmat.hpp"
+ #include "slapgas.hpp"
  #include "catch.hpp"
  #include <cmath>
 

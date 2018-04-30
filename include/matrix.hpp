@@ -1,5 +1,5 @@
 /*
- *  GASMat
+ *  SLAPGAS
  *  (C) Greg Meyer, 2018
  */
 
