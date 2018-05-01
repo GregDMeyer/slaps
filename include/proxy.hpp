@@ -28,6 +28,8 @@ public:
   /* read-only with no put_fut */
   RData() {};
 
+  RData(upcxx::global_ptr<data_t> addr) : addr(addr) {};
+
   RData(upcxx::global_ptr<data_t> addr,
         upcxx::future<> &put_fut)
         : addr(addr)
