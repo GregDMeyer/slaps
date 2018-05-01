@@ -200,6 +200,71 @@ TEST_CASE( "operator[] method (remote tests)" TYPE_STR, "" ) {
 
 }
 
+TEST_CASE( "read_range" TYPE_STR, "" ) {
+
+  IDX_T len(100);
+
+  Vec<IDX_T, DATA_T> v(len);
+  IDX_T start, end;
+  v.get_local_range(start, end);
+  auto v_local = v.get_local_array();
+
+  std::vector<DATA_T> buf;
+  buf.resize(len);
+
+  /* initialize vector to just hold values corresponding to the indices */
+  for (IDX_T i = start; i < end; ++i) {
+    v_local[i-start] = i;
+  }
+
+  SECTION( "start = 0; end = 1" ) {
+    buf[0] = 1;
+    v.read_range(0, 1, buf.data());
+    REQUIRE(buf[0] == 0);
+  }
+
+  SECTION( "start = 1; end == 11" ) {
+    v.read_range(1, 11, buf.data());
+    for (IDX_T i = 0; i < 10; ++i) {
+      REQUIRE(buf[i] == i+1);
+    }
+  }
+
+  SECTION( "start = 78; end == 92" ) {
+    v.read_range(78, 92, buf.data());
+    for (IDX_T i = 0; i < 14; ++i) {
+      REQUIRE(buf[i] == i+78);
+    }
+  }
+
+  SECTION( "start = 0; end == 100" ) {
+    v.read_range(0, 100, buf.data());
+    for (IDX_T i = 0; i < 100; ++i) {
+      REQUIRE(buf[i] == i);
+    }
+  }
+
+  SECTION( "start = 5; end == 5" ) {
+    v.read_range(5, 5, buf.data());
+    /* this shouldn't do anything, but also shouldn't fail */
+  }
+
+  /* exceptions */
+
+  SECTION( "begin low" ) {
+    REQUIRE_THROWS_AS(v.read_range(-1, 15, buf.data()), std::out_of_range);
+  }
+
+  SECTION( "end high" ) {
+    REQUIRE_THROWS_AS(v.read_range(85, 101, buf.data()), std::out_of_range);
+  }
+
+  SECTION( "begin > end" ) {
+    REQUIRE_THROWS_AS(v.read_range(85, 15, buf.data()), std::out_of_range);
+  }
+
+}
+
 TEST_CASE( "set_all method" TYPE_STR, "" ) {
 
   /* TODO: can we orthogonalize this test from the operator[] method? */

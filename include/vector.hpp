@@ -79,6 +79,16 @@ public:
   /* copy all values from this vector to another vector v */
   void copy(Vec& v) const;
 
+  /*
+   * get a range of local or remote values by index, and write them into buf.
+   * buf must be already allocated with room for end-start values!
+   */
+  void read_range(I start, I end, D* buf);
+
+  /* asynchronous */
+  void read_range_begin(I start, I end, D* buf);
+  void read_range_complete();
+
   /*======================*/
   /*** vector functions ***/
 
@@ -98,7 +108,8 @@ private:
   upcxx::global_ptr<D> _local_gptr;
   D* _local_data;
 
-  upcxx::future<> _put_fut;
+  upcxx::future<> _put_fut, _range_get_fut;
+  bool getting = false;
 
 };
 
@@ -340,6 +351,71 @@ void Vec<I, D>::copy(Vec& v) const {
     other[i] = mine[i];
   }
 
+}
+
+/*
+ * get a range of local or remote values by index, and write them into buf.
+ * buf must be already allocated with room for end-start values!
+ */
+template <typename I, typename D>
+void Vec<I, D>::read_range(I start, I end, D* buf)
+{
+  read_range_begin(start, end, buf);
+  read_range_complete();
+}
+
+/* asynchronous */
+template <typename I, typename D>
+void Vec<I, D>::read_range_begin(I start, I end, D* buf)
+{
+  I vend;
+  vend = get_size();
+
+  /* check bounds */
+  if (start < 0) {
+    std::ostringstream out;
+    out << "start index " << start << " out of range.";
+    throw std::out_of_range(out.str());
+  }
+  if (end > vend) {
+    std::ostringstream out;
+    out << "end index " << end << " greater than vector size " << vend;
+    throw std::out_of_range(out.str());
+  }
+  if (start > end) {
+    std::ostringstream out;
+    out << "start index " << start << " greater than end index " << end;
+    throw std::out_of_range(out.str());
+  }
+
+  /* find starting process to get from */
+  I proc = idx_to_proc(start, vend);
+  I tmp_start = start;
+
+  /* set up a future to conjoin to */
+  _range_get_fut = upcxx::make_future();
+  auto gptr = _gptrs[proc] + (start - _partitions[proc]);
+
+  while (tmp_start < end) {
+
+    _range_get_fut = upcxx::when_all(_range_get_fut,
+      upcxx::rget(gptr, buf + (tmp_start-start),
+                  std::min(_partitions[proc+1], end) - tmp_start)
+    );
+
+    proc++;
+    tmp_start = _partitions[proc];
+    gptr = _gptrs[proc];
+  }
+
+  getting = true;
+}
+
+template <typename I, typename D>
+void Vec<I, D>::read_range_complete()
+{
+  _range_get_fut.wait();
+  getting = false;
 }
 
 /*======================*/
