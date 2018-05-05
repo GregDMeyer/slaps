@@ -24,7 +24,8 @@
 enum class DotImpl { Naive, Single, Block };
 
 /* how many values to prefetch */
-#define DOT_BLOCK_SIZE 2048
+#define DOT_BLOCK_SIZE 4
+#define NBUFS 2
 
 template <typename I, typename D>
 class Mat
@@ -430,6 +431,53 @@ template <typename I, typename D>
 void Mat<I,D>::_plusdot_block(Vec<I,D>& x, Vec<I,D>& y) const
 {
 
-  /* TODO */
+  auto x_array = x.get_local_array_read();
+  auto y_array = y.get_local_array();
 
+  I local_size = get_local_rows_size();
+
+  std::vector< std::vector<D> > bufs(NBUFS, std::vector<D>(DOT_BLOCK_SIZE));
+
+  /* TODO: could probably come up with a better way to do this */
+  std::vector<I> row_starts(_M, 0);
+  I buf_start_idx = 0;
+  int which_buf = 0;
+
+  /* get the first block */
+  x.read_range_begin(buf_start_idx, std::min(_N, buf_start_idx + DOT_BLOCK_SIZE), bufs[which_buf].data());
+
+  /* do the local matvec while those values are on their way */
+  for (I i = 0; i < local_size; ++i) {
+    for (const auto& p : _local[i]) {
+      y_array[i] += p.second * x_array[p.first];
+    }
+  }
+
+  /* now remote part */
+  while (buf_start_idx < _N) {
+
+    /* finish getting previous */
+    x.read_range_complete();
+
+    /* fetch next block */
+    if (buf_start_idx+DOT_BLOCK_SIZE < _N) {
+      x.read_range_begin(buf_start_idx+DOT_BLOCK_SIZE, std::min(_N, buf_start_idx + 2*DOT_BLOCK_SIZE), bufs[(which_buf+1)%NBUFS].data());
+    }
+
+    /* our data is in bufs[which_buf] */
+
+    for (I i = 0; i < local_size; ++i) {
+      while (row_starts[i] < I(_remote[i].size()) && _remote[i][row_starts[i]].first < buf_start_idx + DOT_BLOCK_SIZE) {
+        I buf_idx = _remote[i][row_starts[i]].first - buf_start_idx;
+        y_array[i] += _remote[i][row_starts[i]].second * bufs[which_buf][buf_idx];
+        row_starts[i]++;
+      }
+    }
+
+    which_buf++;
+    which_buf %= NBUFS;
+
+    buf_start_idx += DOT_BLOCK_SIZE;
+
+  }
 }

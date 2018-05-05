@@ -128,13 +128,13 @@ TEST_CASE( "15x15 dot" TYPE_STR, "" ) {
         CHECK(y[i] == Approx(correct[i]));
       }
     }
-    // SECTION( "Block" ) {
-    //   m.dot(x, y, DotImpl::Block);
-    //   upcxx::barrier();
-    //   for (IDX_T i = start; i < end; ++i) {
-    //     CHECK(y[i] == Approx(correct[i]));
-    //   }
-    // }
+    SECTION( "Block" ) {
+      m.dot(x, y, DotImpl::Block);
+      upcxx::barrier();
+      for (IDX_T i = start; i < end; ++i) {
+        CHECK(y[i] == Approx(correct[i]));
+      }
+    }
   }
 
   SECTION("diagonal index") {
@@ -159,6 +159,13 @@ TEST_CASE( "15x15 dot" TYPE_STR, "" ) {
     }
     SECTION( "Single" ) {
       m.dot(x, y, DotImpl::Single);
+      upcxx::barrier();
+      for (IDX_T i = start; i < end; ++i) {
+        CHECK(y[i] == Approx(correct[i]));
+      }
+    }
+    SECTION( "Block" ) {
+      m.dot(x, y, DotImpl::Block);
       upcxx::barrier();
       for (IDX_T i = start; i < end; ++i) {
         CHECK(y[i] == Approx(correct[i]));
@@ -193,6 +200,13 @@ TEST_CASE( "15x15 dot" TYPE_STR, "" ) {
         CHECK(y[i] == Approx(correct[i]));
       }
     }
+    SECTION( "Block" ) {
+      m.dot(x, y, DotImpl::Block);
+      upcxx::barrier();
+      for (IDX_T i = start; i < end; ++i) {
+        CHECK(y[i] == Approx(correct[i]));
+      }
+    }
   }
 
   SECTION ("off-diagonal index") {
@@ -218,6 +232,13 @@ TEST_CASE( "15x15 dot" TYPE_STR, "" ) {
     }
     SECTION( "Single" ) {
       m.dot(x, y, DotImpl::Single);
+      upcxx::barrier();
+      for (IDX_T i = start; i < end; ++i) {
+        CHECK(y[i] == Approx(correct[i]));
+      }
+    }
+    SECTION( "Block" ) {
+      m.dot(x, y, DotImpl::Block);
       upcxx::barrier();
       for (IDX_T i = start; i < end; ++i) {
         CHECK(y[i] == Approx(correct[i]));
@@ -254,8 +275,14 @@ TEST_CASE( "15x15 dot" TYPE_STR, "" ) {
         CHECK(y[i] == Approx(correct[i]));
       }
     }
+    SECTION( "Block" ) {
+      m.dot(x, y, DotImpl::Block);
+      upcxx::barrier();
+      for (IDX_T i = start; i < end; ++i) {
+        CHECK(y[i] == Approx(correct[i]));
+      }
+    }
   }
-
 }
 
 TEST_CASE( "11x13 dot" TYPE_STR, "" ) {
@@ -308,6 +335,13 @@ TEST_CASE( "11x13 dot" TYPE_STR, "" ) {
         CHECK(y[i] == Approx(correct[i]));
       }
     }
+    SECTION( "Block" ) {
+      m.dot(x, y, DotImpl::Block);
+      upcxx::barrier();
+      for (IDX_T i = start; i < end; ++i) {
+        CHECK(y[i] == Approx(correct[i]));
+      }
+    }
   }
 
   SECTION("diagonal_index") {
@@ -340,29 +374,53 @@ TEST_CASE( "11x13 dot" TYPE_STR, "" ) {
         CHECK(y[i] == Approx(correct[i]));
       }
     }
+    SECTION( "Block" ) {
+      m.dot(x, y, DotImpl::Block);
+      upcxx::barrier();
+      for (IDX_T i = start; i < end; ++i) {
+        CHECK(y[i] == Approx(correct[i]));
+      }
+    }
   }
 
-  /* TODO: fix this test */
-  // SECTION ("off-diagonal") {
-  //   for (IDX_T i = 0; i < end - start; ++i) {
-  //     m.set_value(start + i, (xend + i) % N, 1);
-  //   }
-  //
-  //   x.set_all(0);
-  //   correct.resize(M);
-  //   for (IDX_T i = 0; i < end - start; ++i) {
-  //     xarr[i] = xstart + i;
-  //     correct[start+i] = (xend+i) % N;
-  //   }
-  //   upcxx::barrier();
-  //
-  //   m.dot(x, y);
-  //   upcxx::barrier();
-  //
-  //   for (IDX_T i = start; i < end; ++i) {
-  //     CHECK(y[i] == Approx(correct[i]));
-  //   }
-  // }
+  SECTION ("off-diagonal") {
+    for (IDX_T i = 0; i < end - start; ++i) {
+      m.set_value(start + i, (xend + i) % N, 1);
+    }
+
+    x.set_all(0);
+    correct.resize(M);
+    for (IDX_T i = 0; i < xend - xstart; ++i) {
+      xarr[i] = xstart + i;
+    }
+    for (IDX_T i = 0; i < end - start; ++i) {
+      correct[start+i] = (xend+i) % N;
+    }
+    upcxx::barrier();
+
+    SECTION( "Naive" ) {
+      m.dot(x, y, DotImpl::Naive);
+      upcxx::barrier();
+      for (IDX_T i = start; i < end; ++i) {
+        CHECK(y[i] == Approx(correct[i]));
+      }
+    }
+    SECTION( "Single" ) {
+      m.dot(x, y, DotImpl::Single);
+      upcxx::barrier();
+      for (IDX_T i = start; i < end; ++i) {
+        CHECK(y[i] == Approx(correct[i]));
+      }
+    }
+
+    SECTION( "Block" ) {
+      m.dot(x, y, DotImpl::Block);
+      upcxx::barrier();
+      for (IDX_T i = start; i < end; ++i) {
+        CHECK(y[i] == Approx(correct[i]));
+      }
+    }
+  }
 
   SECTION ("full") {
     for (IDX_T i = 0; i < 45; ++i) {
@@ -397,6 +455,15 @@ TEST_CASE( "11x13 dot" TYPE_STR, "" ) {
     }
     SECTION( "Single" ) {
       m.dot(x, y, DotImpl::Single);
+      upcxx::barrier();
+      for (IDX_T i = start; i < end; ++i) {
+        CHECK(y[i] == Approx(correct[i]));
+      }
+    }
+
+    /* this test currently fails because we don't handle out of order elements well */
+    SECTION( "Block" ) {
+      m.dot(x, y, DotImpl::Block);
       upcxx::barrier();
       for (IDX_T i = start; i < end; ++i) {
         CHECK(y[i] == Approx(correct[i]));
@@ -456,6 +523,13 @@ TEST_CASE( "13x11 dot" TYPE_STR, "" ) {
         CHECK(y[i] == Approx(correct[i]));
       }
     }
+    SECTION( "Block" ) {
+      m.dot(x, y, DotImpl::Block);
+      upcxx::barrier();
+      for (IDX_T i = start; i < end; ++i) {
+        CHECK(y[i] == Approx(correct[i]));
+      }
+    }
   }
 
   SECTION("diagonal_index") {
@@ -488,6 +562,13 @@ TEST_CASE( "13x11 dot" TYPE_STR, "" ) {
         CHECK(y[i] == Approx(correct[i]));
       }
     }
+    SECTION( "Block" ) {
+      m.dot(x, y, DotImpl::Block);
+      upcxx::barrier();
+      for (IDX_T i = start; i < end; ++i) {
+        CHECK(y[i] == Approx(correct[i]));
+      }
+    }
   }
 
   SECTION ("off-diagonal") {
@@ -515,6 +596,13 @@ TEST_CASE( "13x11 dot" TYPE_STR, "" ) {
     }
     SECTION( "Single" ) {
       m.dot(x, y, DotImpl::Single);
+      upcxx::barrier();
+      for (IDX_T i = start; i < end; ++i) {
+        CHECK(y[i] == Approx(correct[i]));
+      }
+    }
+    SECTION( "Block" ) {
+      m.dot(x, y, DotImpl::Block);
       upcxx::barrier();
       for (IDX_T i = start; i < end; ++i) {
         CHECK(y[i] == Approx(correct[i]));
