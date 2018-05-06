@@ -7,6 +7,7 @@
 
 typedef unsigned int I;
 typedef double D;
+typedef SingleCSRMat<I,D> mat_t;
 
 #define LARGE_PRIME 1046527
 
@@ -14,12 +15,11 @@ void parse_args(int argc, char* argv[],
                 I& dim,
                 I& sparsity,
                 I& iterations,
-                DotImpl& impl,
                 bool& quiet);
 
 int main(int argc, char* argv[])
 {
-  Mat<I,D> m;
+  mat_t m;
   Vec<I,D> x, y;
   double timedelta;
   bool do_print;
@@ -27,20 +27,18 @@ int main(int argc, char* argv[])
 
   I dim = 100, sparsity = 10, iterations = 100;
   bool quiet = false;
-  DotImpl impl = DotImpl::Single;
 
   upcxx::init();
   if (upcxx::rank_me() == 0) do_print = true;
   else do_print = false;
 
-  parse_args(argc, argv, dim, sparsity, iterations, impl, quiet);
+  parse_args(argc, argv, dim, sparsity, iterations, quiet);
 
   if (!quiet && do_print) {
     std::cout << "Timing SLAPGAS MatVec." << std::endl;
     std::cout << " dim = " << dim << std::endl;
     std::cout << " sparsity = " << sparsity << std::endl;
     std::cout << " iterations = " << iterations << std::endl;
-    std::cout << " impl = " << std::vector<std::string>({"naive", "single", "block"})[int(impl)] << std::endl;
   }
 
   m.set_dimensions(dim, dim);
@@ -49,7 +47,6 @@ int main(int argc, char* argv[])
 
   /* set 1's in the correct sparsity pattern in the matrix */
   I tot_nz = dim/sparsity + 1;
-  m.reserve(tot_nz/upcxx::rank_n() + 1, tot_nz - tot_nz/upcxx::rank_n() + 1);
   m.get_local_rows(row_start, row_end);
 
   for (I i = row_start; i < row_end; ++i) {
@@ -59,13 +56,15 @@ int main(int argc, char* argv[])
     }
   }
 
+  m.setup(tot_nz/upcxx::rank_n() + 1, tot_nz - tot_nz/upcxx::rank_n() + 1);
+
   x.set_all(1);
 
   upcxx::barrier();
 
   auto tick = std::chrono::system_clock::now();
   for (I i = 0; i < iterations; ++i) {
-    m.dot(x, y, impl);
+    m.dot(x, y);
   }
   /* make sure we're all done */
   upcxx::barrier();
@@ -87,7 +86,6 @@ void parse_args(int argc, char* argv[],
                 I& dim,
                 I& sparsity,
                 I& iterations,
-                DotImpl& impl,
                 bool& quiet) {
 
   bool recognized = true;
@@ -107,18 +105,6 @@ void parse_args(int argc, char* argv[],
       }
       else if (!strcmp(argv[i], "-it")) {
         iterations = atoi(argv[i+1]);
-        i++;
-      }
-      else if (!strcmp(argv[i], "-impl")) {
-        if (!strcmp(argv[i+1], "naive")) {
-          impl = DotImpl::Naive;
-        }
-        else if (!strcmp(argv[i+1], "single")) {
-          impl = DotImpl::Single;
-        }
-        else if (!strcmp(argv[i+1], "block")) {
-          impl = DotImpl::Block;
-        }
         i++;
       }
       else {

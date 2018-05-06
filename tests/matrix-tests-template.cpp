@@ -13,16 +13,16 @@
 /* macros to turn the data types into strings for the test case name */
 #define _STR(x) #x
 #define TO_STR(x) _STR(x)
-#define TYPE_STR " \tidx_t=" TO_STR(IDX_T) " \tdata_t=" TO_STR(DATA_T)
+#define TYPE_STR " \tmat_t=" TO_STR(MAT_T) " \tidx_t=" TO_STR(IDX_T) " \tdata_t=" TO_STR(DATA_T)
 
 TEST_CASE( "constructor/destructor " TYPE_STR, "" ) {
 
   SECTION( "default" ) {
-    Mat<IDX_T, DATA_T> m;
+    MAT_T<IDX_T, DATA_T> m;
   }
 
   SECTION( "default + set_dimensions" ) {
-    Mat<IDX_T, DATA_T> m;
+    MAT_T<IDX_T, DATA_T> m;
     m.set_dimensions(10, 12);
 
     IDX_T M, N;
@@ -32,7 +32,7 @@ TEST_CASE( "constructor/destructor " TYPE_STR, "" ) {
   }
 
   SECTION( "size" ) {
-    Mat<IDX_T, DATA_T> m(10, 12);
+    MAT_T<IDX_T, DATA_T> m(10, 12);
 
     IDX_T M, N;
     m.get_dimensions(M, N);
@@ -44,12 +44,11 @@ TEST_CASE( "constructor/destructor " TYPE_STR, "" ) {
 
 TEST_CASE( "set values" TYPE_STR, "" ) {
 
-  Mat<IDX_T, DATA_T> m;
+  MAT_T<IDX_T, DATA_T> m;
   IDX_T start, end;
 
   SECTION( "scattered" ) {
     m.set_dimensions(10, 15);
-    m.reserve(10, 5);
     m.get_local_rows(start, end);
     for (IDX_T i = 0; i < 45; ++i) {
       IDX_T idx = i%10;
@@ -58,7 +57,6 @@ TEST_CASE( "set values" TYPE_STR, "" ) {
         m.set_value(idx, idy, std::sin(i));
       }
     }
-    m.shrink_extra();
   }
 
   SECTION( "diag 11x23" ) {
@@ -67,9 +65,8 @@ TEST_CASE( "set values" TYPE_STR, "" ) {
     m.get_diag_cols(start, end);
     m.get_local_rows(row_start, row_end);
     for (IDX_T i = start; i < end; ++i) {
-      m.set_diag_value(row_start + ((i-row_start)%(row_end-row_start)), i, std::sin(i));
+      m.set_value(row_start + ((i-row_start)%(row_end-row_start)), i, std::sin(i));
     }
-    m.shrink_extra();
   }
 
   SECTION( "diag 23x11" ) {
@@ -78,16 +75,15 @@ TEST_CASE( "set values" TYPE_STR, "" ) {
     m.get_diag_cols(start, end);
     m.get_local_rows(row_start, row_end);
     for (IDX_T i = row_start; i < row_end; ++i) {
-      m.set_diag_value(i, start + ((i-start)%(end-start)), std::sin(i));
+      m.set_value(i, start + ((i-start)%(end-start)), std::sin(i));
     }
-    m.shrink_extra();
   }
 
 }
 
 TEST_CASE( "15x15 dot" TYPE_STR, "" ) {
 
-  Mat<IDX_T, DATA_T> m;
+  MAT_T<IDX_T, DATA_T> m;
   Vec<IDX_T, DATA_T> x, y;
   IDX_T start, end;
 
@@ -114,26 +110,11 @@ TEST_CASE( "15x15 dot" TYPE_STR, "" ) {
     }
     upcxx::barrier();
 
-    SECTION( "Naive" ) {
-      m.dot(x, y, DotImpl::Naive);
-      upcxx::barrier();
-      for (IDX_T i = start; i < end; ++i) {
-        CHECK(y[i] == Approx(correct[i]));
-      }
-    }
-    SECTION( "Single" ) {
-      m.dot(x, y, DotImpl::Single);
-      upcxx::barrier();
-      for (IDX_T i = start; i < end; ++i) {
-        CHECK(y[i] == Approx(correct[i]));
-      }
-    }
-    SECTION( "Block" ) {
-      m.dot(x, y, DotImpl::Block);
-      upcxx::barrier();
-      for (IDX_T i = start; i < end; ++i) {
-        CHECK(y[i] == Approx(correct[i]));
-      }
+    m.setup();
+    m.dot(x, y);
+    upcxx::barrier();
+    for (IDX_T i = start; i < end; ++i) {
+      CHECK(y[i] == Approx(correct[i]));
     }
   }
 
@@ -150,26 +131,11 @@ TEST_CASE( "15x15 dot" TYPE_STR, "" ) {
     }
     upcxx::barrier();
 
-    SECTION( "Naive" ) {
-      m.dot(x, y, DotImpl::Naive);
-      upcxx::barrier();
-      for (IDX_T i = start; i < end; ++i) {
-        CHECK(y[i] == Approx(correct[i]));
-      }
-    }
-    SECTION( "Single" ) {
-      m.dot(x, y, DotImpl::Single);
-      upcxx::barrier();
-      for (IDX_T i = start; i < end; ++i) {
-        CHECK(y[i] == Approx(correct[i]));
-      }
-    }
-    SECTION( "Block" ) {
-      m.dot(x, y, DotImpl::Block);
-      upcxx::barrier();
-      for (IDX_T i = start; i < end; ++i) {
-        CHECK(y[i] == Approx(correct[i]));
-      }
+    m.setup();
+    m.dot(x, y);
+    upcxx::barrier();
+    for (IDX_T i = start; i < end; ++i) {
+      CHECK(y[i] == Approx(correct[i]));
     }
   }
 
@@ -186,26 +152,11 @@ TEST_CASE( "15x15 dot" TYPE_STR, "" ) {
     }
     upcxx::barrier();
 
-    SECTION( "Naive" ) {
-      m.dot(x, y, DotImpl::Naive);
-      upcxx::barrier();
-      for (IDX_T i = start; i < end; ++i) {
-        CHECK(y[i] == Approx(correct[i]));
-      }
-    }
-    SECTION( "Single" ) {
-      m.dot(x, y, DotImpl::Single);
-      upcxx::barrier();
-      for (IDX_T i = start; i < end; ++i) {
-        CHECK(y[i] == Approx(correct[i]));
-      }
-    }
-    SECTION( "Block" ) {
-      m.dot(x, y, DotImpl::Block);
-      upcxx::barrier();
-      for (IDX_T i = start; i < end; ++i) {
-        CHECK(y[i] == Approx(correct[i]));
-      }
+    m.setup();
+    m.dot(x, y);
+    upcxx::barrier();
+    for (IDX_T i = start; i < end; ++i) {
+      CHECK(y[i] == Approx(correct[i]));
     }
   }
 
@@ -223,26 +174,11 @@ TEST_CASE( "15x15 dot" TYPE_STR, "" ) {
     }
     upcxx::barrier();
 
-    SECTION( "Naive" ) {
-      m.dot(x, y, DotImpl::Naive);
-      upcxx::barrier();
-      for (IDX_T i = start; i < end; ++i) {
-        CHECK(y[i] == Approx(correct[i]));
-      }
-    }
-    SECTION( "Single" ) {
-      m.dot(x, y, DotImpl::Single);
-      upcxx::barrier();
-      for (IDX_T i = start; i < end; ++i) {
-        CHECK(y[i] == Approx(correct[i]));
-      }
-    }
-    SECTION( "Block" ) {
-      m.dot(x, y, DotImpl::Block);
-      upcxx::barrier();
-      for (IDX_T i = start; i < end; ++i) {
-        CHECK(y[i] == Approx(correct[i]));
-      }
+    m.setup();
+    m.dot(x, y);
+    upcxx::barrier();
+    for (IDX_T i = start; i < end; ++i) {
+      CHECK(y[i] == Approx(correct[i]));
     }
   }
 
@@ -261,26 +197,11 @@ TEST_CASE( "15x15 dot" TYPE_STR, "" ) {
     }
     upcxx::barrier();
 
-    SECTION( "Naive" ) {
-      m.dot(x, y, DotImpl::Naive);
-      upcxx::barrier();
-      for (IDX_T i = start; i < end; ++i) {
-        CHECK(y[i] == Approx(correct[i]));
-      }
-    }
-    SECTION( "Single" ) {
-      m.dot(x, y, DotImpl::Single);
-      upcxx::barrier();
-      for (IDX_T i = start; i < end; ++i) {
-        CHECK(y[i] == Approx(correct[i]));
-      }
-    }
-    SECTION( "Block" ) {
-      m.dot(x, y, DotImpl::Block);
-      upcxx::barrier();
-      for (IDX_T i = start; i < end; ++i) {
-        CHECK(y[i] == Approx(correct[i]));
-      }
+    m.setup();
+    m.dot(x, y);
+    upcxx::barrier();
+    for (IDX_T i = start; i < end; ++i) {
+      CHECK(y[i] == Approx(correct[i]));
     }
   }
 }
@@ -289,7 +210,7 @@ TEST_CASE( "11x13 dot" TYPE_STR, "" ) {
 
   IDX_T M = 11, N = 13;
 
-  Mat<IDX_T, DATA_T> m;
+  MAT_T<IDX_T, DATA_T> m;
   Vec<IDX_T, DATA_T> x, y;
   IDX_T start, end;
 
@@ -321,26 +242,11 @@ TEST_CASE( "11x13 dot" TYPE_STR, "" ) {
       correct[start+i] = xstart + i;
     }
 
-    SECTION( "Naive" ) {
-      m.dot(x, y, DotImpl::Naive);
-      upcxx::barrier();
-      for (IDX_T i = start; i < end; ++i) {
-        CHECK(y[i] == Approx(correct[i]));
-      }
-    }
-    SECTION( "Single" ) {
-      m.dot(x, y, DotImpl::Single);
-      upcxx::barrier();
-      for (IDX_T i = start; i < end; ++i) {
-        CHECK(y[i] == Approx(correct[i]));
-      }
-    }
-    SECTION( "Block" ) {
-      m.dot(x, y, DotImpl::Block);
-      upcxx::barrier();
-      for (IDX_T i = start; i < end; ++i) {
-        CHECK(y[i] == Approx(correct[i]));
-      }
+    m.setup();
+    m.dot(x, y);
+    upcxx::barrier();
+    for (IDX_T i = start; i < end; ++i) {
+      CHECK(y[i] == Approx(correct[i]));
     }
   }
 
@@ -360,26 +266,11 @@ TEST_CASE( "11x13 dot" TYPE_STR, "" ) {
       correct[i] = i;
     }
 
-    SECTION( "Naive" ) {
-      m.dot(x, y, DotImpl::Naive);
-      upcxx::barrier();
-      for (IDX_T i = start; i < end; ++i) {
-        CHECK(y[i] == Approx(correct[i]));
-      }
-    }
-    SECTION( "Single" ) {
-      m.dot(x, y, DotImpl::Single);
-      upcxx::barrier();
-      for (IDX_T i = start; i < end; ++i) {
-        CHECK(y[i] == Approx(correct[i]));
-      }
-    }
-    SECTION( "Block" ) {
-      m.dot(x, y, DotImpl::Block);
-      upcxx::barrier();
-      for (IDX_T i = start; i < end; ++i) {
-        CHECK(y[i] == Approx(correct[i]));
-      }
+    m.setup();
+    m.dot(x, y);
+    upcxx::barrier();
+    for (IDX_T i = start; i < end; ++i) {
+      CHECK(y[i] == Approx(correct[i]));
     }
   }
 
@@ -398,27 +289,11 @@ TEST_CASE( "11x13 dot" TYPE_STR, "" ) {
     }
     upcxx::barrier();
 
-    SECTION( "Naive" ) {
-      m.dot(x, y, DotImpl::Naive);
-      upcxx::barrier();
-      for (IDX_T i = start; i < end; ++i) {
-        CHECK(y[i] == Approx(correct[i]));
-      }
-    }
-    SECTION( "Single" ) {
-      m.dot(x, y, DotImpl::Single);
-      upcxx::barrier();
-      for (IDX_T i = start; i < end; ++i) {
-        CHECK(y[i] == Approx(correct[i]));
-      }
-    }
-
-    SECTION( "Block" ) {
-      m.dot(x, y, DotImpl::Block);
-      upcxx::barrier();
-      for (IDX_T i = start; i < end; ++i) {
-        CHECK(y[i] == Approx(correct[i]));
-      }
+    m.setup();
+    m.dot(x, y);
+    upcxx::barrier();
+    for (IDX_T i = start; i < end; ++i) {
+      CHECK(y[i] == Approx(correct[i]));
     }
   }
 
@@ -446,38 +321,20 @@ TEST_CASE( "11x13 dot" TYPE_STR, "" ) {
     }
     upcxx::barrier();
 
-    SECTION( "Naive" ) {
-      m.dot(x, y, DotImpl::Naive);
-      upcxx::barrier();
-      for (IDX_T i = start; i < end; ++i) {
-        CHECK(y[i] == Approx(correct[i]));
-      }
-    }
-    SECTION( "Single" ) {
-      m.dot(x, y, DotImpl::Single);
-      upcxx::barrier();
-      for (IDX_T i = start; i < end; ++i) {
-        CHECK(y[i] == Approx(correct[i]));
-      }
-    }
-
-    /* this test currently fails because we don't handle out of order elements well */
-    SECTION( "Block" ) {
-      m.dot(x, y, DotImpl::Block);
-      upcxx::barrier();
-      for (IDX_T i = start; i < end; ++i) {
-        CHECK(y[i] == Approx(correct[i]));
-      }
+    m.setup();
+    m.dot(x, y);
+    upcxx::barrier();
+    for (IDX_T i = start; i < end; ++i) {
+      CHECK(y[i] == Approx(correct[i]));
     }
   }
-
 }
 
 TEST_CASE( "13x11 dot" TYPE_STR, "" ) {
 
   IDX_T M = 13, N = 11;
 
-  Mat<IDX_T, DATA_T> m;
+  MAT_T<IDX_T, DATA_T> m;
   Vec<IDX_T, DATA_T> x, y;
   IDX_T start, end;
 
@@ -509,26 +366,11 @@ TEST_CASE( "13x11 dot" TYPE_STR, "" ) {
       correct[start+i] = xstart + i;
     }
 
-    SECTION( "Naive" ) {
-      m.dot(x, y, DotImpl::Naive);
-      upcxx::barrier();
-      for (IDX_T i = start; i < end; ++i) {
-        CHECK(y[i] == Approx(correct[i]));
-      }
-    }
-    SECTION( "Single" ) {
-      m.dot(x, y, DotImpl::Single);
-      upcxx::barrier();
-      for (IDX_T i = start; i < end; ++i) {
-        CHECK(y[i] == Approx(correct[i]));
-      }
-    }
-    SECTION( "Block" ) {
-      m.dot(x, y, DotImpl::Block);
-      upcxx::barrier();
-      for (IDX_T i = start; i < end; ++i) {
-        CHECK(y[i] == Approx(correct[i]));
-      }
+    m.setup();
+    m.dot(x, y);
+    upcxx::barrier();
+    for (IDX_T i = start; i < end; ++i) {
+      CHECK(y[i] == Approx(correct[i]));
     }
   }
 
@@ -548,26 +390,11 @@ TEST_CASE( "13x11 dot" TYPE_STR, "" ) {
       correct[start+i] = start + i;
     }
 
-    SECTION( "Naive" ) {
-      m.dot(x, y, DotImpl::Naive);
-      upcxx::barrier();
-      for (IDX_T i = start; i < end; ++i) {
-        CHECK(y[i] == Approx(correct[i]));
-      }
-    }
-    SECTION( "Single" ) {
-      m.dot(x, y, DotImpl::Single);
-      upcxx::barrier();
-      for (IDX_T i = start; i < end; ++i) {
-        CHECK(y[i] == Approx(correct[i]));
-      }
-    }
-    SECTION( "Block" ) {
-      m.dot(x, y, DotImpl::Block);
-      upcxx::barrier();
-      for (IDX_T i = start; i < end; ++i) {
-        CHECK(y[i] == Approx(correct[i]));
-      }
+    m.setup();
+    m.dot(x, y);
+    upcxx::barrier();
+    for (IDX_T i = start; i < end; ++i) {
+      CHECK(y[i] == Approx(correct[i]));
     }
   }
 
@@ -587,40 +414,25 @@ TEST_CASE( "13x11 dot" TYPE_STR, "" ) {
 
     upcxx::barrier();
 
-    SECTION( "Naive" ) {
-      m.dot(x, y, DotImpl::Naive);
-      upcxx::barrier();
-      for (IDX_T i = start; i < end; ++i) {
-        CHECK(y[i] == Approx(correct[i]));
-      }
-    }
-    SECTION( "Single" ) {
-      m.dot(x, y, DotImpl::Single);
-      upcxx::barrier();
-      for (IDX_T i = start; i < end; ++i) {
-        CHECK(y[i] == Approx(correct[i]));
-      }
-    }
-    SECTION( "Block" ) {
-      m.dot(x, y, DotImpl::Block);
-      upcxx::barrier();
-      for (IDX_T i = start; i < end; ++i) {
-        CHECK(y[i] == Approx(correct[i]));
-      }
+    m.setup();
+    m.dot(x, y);
+    upcxx::barrier();
+    for (IDX_T i = start; i < end; ++i) {
+      CHECK(y[i] == Approx(correct[i]));
     }
   }
-
 }
 
 TEST_CASE( "dot exceptions" TYPE_STR, "" ) {
 
-  Mat<IDX_T, DATA_T> m;
+  MAT_T<IDX_T, DATA_T> m;
   Vec<IDX_T, DATA_T> x, y;
 
   SECTION( "bad x dim" ) {
     m.set_dimensions(10,20);
     x.allocate_elements(12);
     y.allocate_elements(10);
+    m.setup();
     REQUIRE_THROWS_AS( m.dot(x, y), std::invalid_argument );
   }
 
@@ -628,6 +440,7 @@ TEST_CASE( "dot exceptions" TYPE_STR, "" ) {
     m.set_dimensions(10,20);
     x.allocate_elements(20);
     y.allocate_elements(12);
+    m.setup();
     REQUIRE_THROWS_AS( m.dot(x, y), std::invalid_argument );
   }
 
@@ -635,6 +448,7 @@ TEST_CASE( "dot exceptions" TYPE_STR, "" ) {
     m.set_dimensions(10,20);
     x.allocate_elements(12);
     y.allocate_elements(13);
+    m.setup();
     REQUIRE_THROWS_AS( m.dot(x, y), std::invalid_argument );
   }
 
