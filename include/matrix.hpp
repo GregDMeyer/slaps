@@ -193,6 +193,51 @@ public:
 
 };
 
+/*
+ * RCMat is a "row-partition column matrix". It's like CSC format, but the
+ * matrix is still partitioned across processors by row.
+ */
+
+template <typename I, typename D>
+class RCMat : public Mat<I,D>
+{
+
+public:
+  /*==================================*/
+  /*** constructors and destructors ***/
+
+  RCMat() {};
+
+  /* construct an RCMat with dimensions M, N */
+  RCMat(I M, I N) { this->set_dimensions(M, N); };
+
+  /*=========================================*/
+  /*** value setting and memory allocation ***/
+
+  /* set up CSR storage format */
+  /* optional arguments reserve memory for matrix elements:
+   *  - nnz : expected number of nonzeros per column (will be divided by # procs)
+   */
+  void setup(I nnz = 0);
+
+  /*============================*/
+  /*** matrix-vector products ***/
+
+  /* Mat-vector product y = A*x */
+  void dot(Vec<I,D>& x, Vec<I,D>& y) const;
+
+  /* Mat-vector sum product y = A*x + y */
+  void plusdot(Vec<I,D>& x, Vec<I,D>& y) const;
+
+private:
+
+  /* a vector storing the columns! */
+  std::vector< std::pair<I, std::vector< std::pair<I, D>>>> _cols;
+
+  bool is_set_up = false;
+
+};
+
 /* MAT */
 /*============================*/
 /*** dimensions and indices ***/
@@ -555,4 +600,101 @@ void SingleCSRMat<I,D>::plusdot(Vec<I,D>& x, Vec<I,D>& y) const
       pfch_read_idx %= DOT_BLOCK_SIZE;
     }
   }
+}
+
+/*=====================*/
+/* RC MATRIX           */
+/*=====================*/
+
+template <typename I, typename D>
+void RCMat<I, D>::setup(I nnz)
+{
+  if (!this->size_set) {
+    throw std::logic_error("Must set size before calling setup()");
+  }
+  if (is_set_up) {
+    throw std::logic_error("Matrix already set up");
+  }
+
+  I rstart, rend;
+  I cstart, cend;
+
+  this->get_local_rows(rstart, rend);
+  this->get_diag_cols(cstart, cend);
+
+  /* guess half-filling to start */
+  //_cols.reserve(this->_N/2);
+
+  /* we need to sort all the accumulated elements first */
+  /* sort by column, then by row, BUT shifted by the column start for this process */
+  /* that way all the processes don't spam process 0 with requests at once */
+  std::sort(this->_elements.begin(), this->_elements.end(),
+            [&] (std::pair<std::pair<I,I>,D> const& a, std::pair<std::pair<I,I>,D> const& b)
+               { return ((a.first.second+cstart)%this->_N) < ((b.first.second+cstart)%this->_N) || \
+                 (a.first.second == b.first.second && a.first.first < b.first.first); });
+
+  /* now they're sorted, so we can fill our thing */
+  I cur_col = -1;
+  I col_idx = -1;
+  for (auto& e: this->_elements) {
+
+    I row = e.first.first, col = e.first.second;
+    D val = e.second;
+
+    if (col != cur_col) {
+      cur_col = col;
+
+      if (col_idx != I(-1)) {
+        _cols[col_idx].second.shrink_to_fit();
+      }
+
+      _cols.emplace_back();
+      col_idx++;
+      _cols[col_idx].first = col;
+      _cols[col_idx].second.reserve(nnz/upcxx::rank_n());
+    }
+
+    /* TODO: if the user adds two identical elements, sum them */
+
+    _cols[col_idx].second.push_back(std::make_pair(row-rstart, val));
+
+  }
+
+  if (col_idx != I(-1)) {
+    _cols[col_idx].second.shrink_to_fit();
+  }
+  _cols.shrink_to_fit();
+
+  is_set_up = true;
+}
+
+/* Mat-vector product y = A*x */
+template <typename I, typename D>
+void RCMat<I, D>::dot(Vec<I,D>& x, Vec<I,D>& y) const
+{
+  y.set_all(0);
+  plusdot(x, y);
+}
+
+/* Mat-vector sum product y = A*x + y */
+template <typename I, typename D>
+void RCMat<I,D>::plusdot(Vec<I,D>& x, Vec<I,D>& y) const
+{
+
+  this->check_dimensions(x, y);
+  if (!this->is_set_up) {
+    throw std::logic_error("Must set up matrix with ::setup() before calling ::plusdot");
+  }
+
+  auto y_array = y.get_local_array();
+  I local_size = this->get_local_rows_size();
+
+  for (const auto& e: _cols) {
+    D val = x[e.first];
+    for (const auto& p : e.second) {
+      /* x[p.first] implicitly gets the remote value */
+      y_array[p.first] += p.second * val;
+    }
+  }
+
 }

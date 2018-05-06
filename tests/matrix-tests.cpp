@@ -22,6 +22,10 @@
 #include "matrix-tests-template.cpp"
 #undef MAT_T
 
+#define MAT_T RCMat
+#include "matrix-tests-template.cpp"
+#undef MAT_T
+
 #undef IDX_T
 #undef DATA_T
 
@@ -39,6 +43,10 @@
 #undef MAT_T
 
 #define MAT_T BlockCSRMat
+#include "matrix-tests-template.cpp"
+#undef MAT_T
+
+#define MAT_T RCMat
 #include "matrix-tests-template.cpp"
 #undef MAT_T
 
