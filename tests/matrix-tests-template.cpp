@@ -114,7 +114,7 @@ TEST_CASE( "15x15 dot" TYPE_STR, "" ) {
     m.dot(x, y);
     upcxx::barrier();
     for (IDX_T i = start; i < end; ++i) {
-      CHECK(y[i] == Approx(correct[i]));
+      CHECK(y[i].get() == Approx(correct[i]));
     }
   }
 
@@ -135,7 +135,7 @@ TEST_CASE( "15x15 dot" TYPE_STR, "" ) {
     m.dot(x, y);
     upcxx::barrier();
     for (IDX_T i = start; i < end; ++i) {
-      CHECK(y[i] == Approx(correct[i]));
+      CHECK(y[i].get() == Approx(correct[i]));
     }
   }
 
@@ -156,7 +156,7 @@ TEST_CASE( "15x15 dot" TYPE_STR, "" ) {
     m.dot(x, y);
     upcxx::barrier();
     for (IDX_T i = start; i < end; ++i) {
-      CHECK(y[i] == Approx(correct[i]));
+      CHECK(y[i].get() == Approx(correct[i]));
     }
   }
 
@@ -178,7 +178,7 @@ TEST_CASE( "15x15 dot" TYPE_STR, "" ) {
     m.dot(x, y);
     upcxx::barrier();
     for (IDX_T i = start; i < end; ++i) {
-      CHECK(y[i] == Approx(correct[i]));
+      CHECK(y[i].get() == Approx(correct[i]));
     }
   }
 
@@ -201,7 +201,7 @@ TEST_CASE( "15x15 dot" TYPE_STR, "" ) {
     m.dot(x, y);
     upcxx::barrier();
     for (IDX_T i = start; i < end; ++i) {
-      CHECK(y[i] == Approx(correct[i]));
+      CHECK(y[i].get() == Approx(correct[i]));
     }
   }
 }
@@ -246,7 +246,7 @@ TEST_CASE( "11x13 dot" TYPE_STR, "" ) {
     m.dot(x, y);
     upcxx::barrier();
     for (IDX_T i = start; i < end; ++i) {
-      CHECK(y[i] == Approx(correct[i]));
+      CHECK(y[i].get() == Approx(correct[i]));
     }
   }
 
@@ -270,7 +270,7 @@ TEST_CASE( "11x13 dot" TYPE_STR, "" ) {
     m.dot(x, y);
     upcxx::barrier();
     for (IDX_T i = start; i < end; ++i) {
-      CHECK(y[i] == Approx(correct[i]));
+      CHECK(y[i].get() == Approx(correct[i]));
     }
   }
 
@@ -293,7 +293,7 @@ TEST_CASE( "11x13 dot" TYPE_STR, "" ) {
     m.dot(x, y);
     upcxx::barrier();
     for (IDX_T i = start; i < end; ++i) {
-      CHECK(y[i] == Approx(correct[i]));
+      CHECK(y[i].get() == Approx(correct[i]));
     }
   }
 
@@ -325,7 +325,7 @@ TEST_CASE( "11x13 dot" TYPE_STR, "" ) {
     m.dot(x, y);
     upcxx::barrier();
     for (IDX_T i = start; i < end; ++i) {
-      CHECK(y[i] == Approx(correct[i]));
+      CHECK(y[i].get() == Approx(correct[i]));
     }
   }
 }
@@ -370,7 +370,7 @@ TEST_CASE( "13x11 dot" TYPE_STR, "" ) {
     m.dot(x, y);
     upcxx::barrier();
     for (IDX_T i = start; i < end; ++i) {
-      CHECK(y[i] == Approx(correct[i]));
+      CHECK(y[i].get() == Approx(correct[i]));
     }
   }
 
@@ -394,7 +394,7 @@ TEST_CASE( "13x11 dot" TYPE_STR, "" ) {
     m.dot(x, y);
     upcxx::barrier();
     for (IDX_T i = start; i < end; ++i) {
-      CHECK(y[i] == Approx(correct[i]));
+      CHECK(y[i].get() == Approx(correct[i]));
     }
   }
 
@@ -418,7 +418,7 @@ TEST_CASE( "13x11 dot" TYPE_STR, "" ) {
     m.dot(x, y);
     upcxx::barrier();
     for (IDX_T i = start; i < end; ++i) {
-      CHECK(y[i] == Approx(correct[i]));
+      CHECK(y[i].get() == Approx(correct[i]));
     }
   }
 }

@@ -147,17 +147,17 @@ TEST_CASE( "operator[] method (local tests)" TYPE_STR, "" ) {
 
   SECTION("start") {
     v[start] = e;
-    REQUIRE(v[start] == e);
+    REQUIRE(v[start].get() == e);
   }
 
   SECTION("middle") {
     v[start + (end-start)/2] = e;
-    REQUIRE(v[start + (end-start)/2] == e);
+    REQUIRE(v[start + (end-start)/2].get() == e);
   }
 
   SECTION("end") {
     v[end-1] = e;
-    REQUIRE(v[end-1] == e);
+    REQUIRE(v[end-1].get() == e);
   }
 
   /* exceptions */
@@ -186,7 +186,7 @@ TEST_CASE( "operator[] method (remote tests)" TYPE_STR, "" ) {
     v.set_wait();
 
     /* check that my first value has been set */
-    REQUIRE(v[start] == e);
+    REQUIRE(v[start].get() == e);
   }
 
   SECTION("get value off process") {
@@ -195,7 +195,7 @@ TEST_CASE( "operator[] method (remote tests)" TYPE_STR, "" ) {
     v.set_wait();
 
     /* check that remote gives correct value */
-    REQUIRE(v[end % len] == e);
+    REQUIRE(v[end % len].get() == e);
   }
 
 }
@@ -282,7 +282,7 @@ TEST_CASE( "set_all method" TYPE_STR, "" ) {
     v.set_all(0);
     for (auto idx : test_idxs) {
       if (idx >= start && idx < end) {
-        REQUIRE(v[idx] == 0);
+        REQUIRE(v[idx].get() == 0);
       }
     }
   }
@@ -292,7 +292,7 @@ TEST_CASE( "set_all method" TYPE_STR, "" ) {
     for (auto idx : test_idxs) {
       if (idx >= start && idx < end) {
         /* need to cast to DATA_T to avoid rounding errors */
-        REQUIRE(v[idx] == DATA_T(3.14));
+        REQUIRE(v[idx].get() == DATA_T(3.14));
       }
     }
   }

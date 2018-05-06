@@ -52,12 +52,6 @@ public:
     return get_fut.wait();
   }
 
-  /* implicitly retrieve remote data whenever we are cast to data_t */
-  /* TODO: is there a way to make this not const, so I can use get_fut.wait() ? */
-  operator data_t() const {
-    return upcxx::rget(addr).wait();
-  }
-
   /* set remote data with = */
   RData& operator= (const data_t &val) {
 

@@ -424,7 +424,7 @@ void NaiveCSRMat<I,D>::plusdot(Vec<I,D>& x, Vec<I,D>& y) const
   for (I i = 0; i < local_size; ++i) {
     for (const auto& p : this->_remote[i]) {
       /* x[p.first] implicitly gets the remote value */
-      y_array[i] += p.second * x[p.first];
+      y_array[i] += p.second * x[p.first].get();
     }
   }
 
@@ -690,7 +690,7 @@ void RCMat<I,D>::plusdot(Vec<I,D>& x, Vec<I,D>& y) const
   I local_size = this->get_local_rows_size();
 
   for (const auto& e: _cols) {
-    D val = x[e.first];
+    D val = x[e.first].get();
     for (const auto& p : e.second) {
       /* x[p.first] implicitly gets the remote value */
       y_array[p.first] += p.second * val;
