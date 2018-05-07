@@ -689,10 +689,41 @@ void RCMat<I,D>::plusdot(Vec<I,D>& x, Vec<I,D>& y) const
   auto y_array = y.get_local_array();
   I local_size = this->get_local_rows_size();
 
+  /* keep an array of prefetched values */
+  std::vector<RData<I,D>> prefetched(DOT_BLOCK_SIZE);
+  I pfch_idx, get_idx = 0;
+  bool prefetch_done = false;
+
+  /* get the initial set of prefetch values */
+  for (pfch_idx = 0; pfch_idx < std::min(I(_cols.size()), I(DOT_BLOCK_SIZE)); ++pfch_idx) {
+    prefetched[pfch_idx].update(x[_cols[pfch_idx].first].get_address());
+    prefetched[pfch_idx].prefetch();
+  }
+
+  if (_cols.size() <= DOT_BLOCK_SIZE) {
+    prefetch_done = true;
+  }
+
   for (const auto& e: _cols) {
-    D val = x[e.first].get();
+
+    D val = prefetched[get_idx].get();
+    get_idx++;
+    get_idx %= DOT_BLOCK_SIZE;
+
+    if (!prefetch_done) {
+      /* prefetch the next one */
+      if (pfch_idx == I(_cols.size())) {
+        prefetch_done = true;
+      }
+      else {
+        prefetched[pfch_idx % DOT_BLOCK_SIZE].update(x[_cols[pfch_idx].first].get_address());
+        prefetched[pfch_idx % DOT_BLOCK_SIZE].prefetch();
+      }
+      pfch_idx++;
+    }
+
+    /* actually do the multiplication for this value */
     for (const auto& p : e.second) {
-      /* x[p.first] implicitly gets the remote value */
       y_array[p.first] += p.second * val;
     }
   }
