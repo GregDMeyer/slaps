@@ -7,7 +7,7 @@
 
 typedef unsigned int I;
 typedef double D;
-typedef SingleCSRMat<I,D> mat_t;
+typedef BlockCSRMat<I,D> mat_t;
 
 #define LARGE_PRIME 1046527
 
@@ -56,7 +56,8 @@ int main(int argc, char* argv[])
     }
   }
 
-  m.setup(tot_nz/upcxx::rank_n() + 1, tot_nz - tot_nz/upcxx::rank_n() + 1);
+  //m.setup(tot_nz/upcxx::rank_n() + 1, tot_nz - tot_nz/upcxx::rank_n() + 1);
+  m.setup(tot_nz);
 
   x.set_all(1);
 
