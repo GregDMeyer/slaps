@@ -1,5 +1,5 @@
-#SLAPS
-####Sparse Linear Algebra on a Partitioned global address Space
+# SLAPS
+#### Sparse Linear Algebra on a Partitioned global address Space
 
 SLAPS uses [UPC++](https://bitbucket.org/berkeleylab/upcxx/wiki/Home) to implement sparse matrix-dense vector multiplication (SpMV) on distributed memory. Its features include:
 
