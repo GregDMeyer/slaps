@@ -1,5 +1,5 @@
 
-#include <slapgas.hpp>
+#include <slaps.hpp>
 #include <cstring>
 #include <iostream>
 #include <chrono>
@@ -35,7 +35,7 @@ int main(int argc, char* argv[])
   parse_args(argc, argv, dim, sparsity, iterations, quiet);
 
   if (!quiet && do_print) {
-    std::cout << "Timing SLAPGAS MatVec." << std::endl;
+    std::cout << "Timing SLAPS MatVec." << std::endl;
     std::cout << " dim = " << dim << std::endl;
     std::cout << " sparsity = " << sparsity << std::endl;
     std::cout << " iterations = " << iterations << std::endl;

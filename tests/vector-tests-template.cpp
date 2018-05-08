@@ -1,5 +1,5 @@
 /*
- *  This file is part of SLAPGAS
+ *  This file is part of SLAPS
  *  (C) Greg Meyer, 2018
  */
 

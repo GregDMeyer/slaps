@@ -1,9 +1,9 @@
 /*
- *  This file is part of SLAPGAS
+ *  This file is part of SLAPS
  *  (C) Greg Meyer, 2018
  */
 
-#include "slapgas.hpp"
+#include "slaps.hpp"
 #include "catch.hpp"
 #include <memory>
 

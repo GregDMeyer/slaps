@@ -1,0 +1,1881 @@
+#LyX 2.2 created this file. For more info see http://www.lyx.org/
+\lyxformat 508
+\begin_document
+\begin_header
+\save_transient_properties true
+\origin unavailable
+\textclass article
+\use_default_options true
+\maintain_unincluded_children false
+\language english
+\language_package default
+\inputencoding auto
+\fontencoding global
+\font_roman "default" "default"
+\font_sans "default" "default"
+\font_typewriter "default" "default"
+\font_math "auto" "auto"
+\font_default_family default
+\use_non_tex_fonts false
+\font_sc false
+\font_osf false
+\font_sf_scale 100 100
+\font_tt_scale 100 100
+\graphics default
+\default_output_format default
+\output_sync 0
+\bibtex_command default
+\index_command default
+\paperfontsize default
+\use_hyperref false
+\papersize default
+\use_geometry false
+\use_package amsmath 1
+\use_package amssymb 1
+\use_package cancel 1
+\use_package esint 1
+\use_package mathdots 1
+\use_package mathtools 1
+\use_package mhchem 1
+\use_package stackrel 1
+\use_package stmaryrd 1
+\use_package undertilde 1
+\cite_engine basic
+\cite_engine_type default
+\biblio_style plain
+\use_bibtopic false
+\use_indices false
+\paperorientation portrait
+\suppress_date false
+\justification true
+\use_refstyle 1
+\index Index
+\shortcut idx
+\color #008000
+\end_index
+\secnumdepth 3
+\tocdepth 3
+\paragraph_separation indent
+\paragraph_indentation default
+\quotes_language english
+\papercolumns 1
+\papersides 1
+\paperpagestyle default
+\tracking_changes false
+\output_changes false
+\html_math_output 0
+\html_css_as_file 0
+\html_be_strict false
+\end_header
+
+\begin_body
+
+\begin_layout Title
+SLAPS
+\begin_inset Newline newline
+\end_inset
+
+
+\series bold
+\size large
+S
+\series default
+parse 
+\series bold
+L
+\series default
+inear 
+\series bold
+A
+\series default
+lgebra on a 
+\series bold
+P
+\series default
+artitioned Global Address 
+\series bold
+S
+\series default
+pace
+\end_layout
+
+\begin_layout Author
+Greg Meyer
+\end_layout
+
+\begin_layout Date
+Spring 2018
+\end_layout
+
+\begin_layout Standard
+Statement of original work:
+\end_layout
+
+\begin_layout Standard
+All code in the source tree is original work by me for this project, with
+ the following exception: 
+\family typewriter
+catch.hpp
+\family default
+ is the header-only unit test framework Catch2, which can be found 
+\begin_inset CommandInset href
+LatexCommand href
+name "here"
+target "https://github.com/catchorg/Catch2"
+
+\end_inset
+
+.
+\end_layout
+
+\begin_layout Standard
+The source code is free and open source online at:
+\end_layout
+
+\begin_layout Standard
+\begin_inset CommandInset href
+LatexCommand href
+target "https://github.com/GregDMeyer/slaps"
+
+\end_inset
+
+.
+\end_layout
+
+\begin_layout Section
+Introduction
+\end_layout
+
+\begin_layout Standard
+SLAPS is a preliminary implementation of distributed sparse matrix-dense
+ vector linear algebra, making use of the PGAS library UPC++.
+ It is a header-only C++ library which currently defines two base class
+ templates: 
+\family typewriter
+Vec
+\family default
+, which implements a distributed dense vector, and 
+\family typewriter
+Mat
+\family default
+, which implements a distributed sparse matrix.
+ These classes are described below.
+ All classes in SLAPS are templated, such that arbitrary data types can
+ be used for both the indices and the data.
+ 
+\end_layout
+
+\begin_layout Standard
+The most important features of SLAPS are:
+\end_layout
+
+\begin_layout Itemize
+
+\series bold
+Implicit
+\series default
+ remote memory reads and writes in 
+\family typewriter
+Vec
+\family default
+ class
+\end_layout
+
+\begin_layout Itemize
+
+\series bold
+Efficient
+\series default
+ SpMV through one-sided UPC++ communication, in some cases outperforming
+ PETSc's MPI implementation
+\end_layout
+
+\begin_layout Itemize
+
+\series bold
+Header-only
+\series default
+ C++ library allows for ease of use and templated API
+\end_layout
+
+\begin_layout Subsection
+Background
+\end_layout
+
+\begin_layout Standard
+Linear algebra is a classic application for high-performance computing.
+ Often, the matrices involved in real-world problems are 
+\begin_inset Quotes eld
+\end_inset
+
+sparse
+\begin_inset Quotes erd
+\end_inset
+
+—many of the elements are zero.
+ Computations involving such matrices occur in diverse fields, including
+ physics and chemistry simulations, engineering, and machine learning.
+ My own research in the physics department studying quantum many-body dynamics
+ makes extensive use of large sparse matrices, to solve high-dimensional
+ linear algebra problems like eigensolving and computing matrix exponentials.
+ In my field and others, the matrices and vectors are often so large that
+ they must be distributed across many processors.
+\end_layout
+
+\begin_layout Standard
+One of the most important operations in sparse linear algebra is the product
+ of a sparse matrix and a dense vector (SpMV).
+ This one operation is the basis of a large class of algorithms, which can
+ make use of it to compute eigenvalues and functions of matrices.
+ This work, SLAPS, is a framework for efficient sparse matrix-dense vector
+ multiplication.
+\end_layout
+
+\begin_layout Standard
+The traditional approach to distributed memory SpMV is to distribute the
+ matrix and vector across processors' local memories, and then use the message
+ passing interface standard (MPI) for communication.
+ In general this can be quite efficient, but there are some downsides: in
+ particular, two-sided MPI requires both the sending and receiving ranks
+ to be prepared for that operation.
+ When data access is unpredictable (as it often is in sparse linear algebra),
+ knowing when to check for incoming MPI messages can be a difficult problem.
+\end_layout
+
+\begin_layout Standard
+An alternative approach, the one pursued here, is to use a partitioned global
+ address space (PGAS).
+ PGAS languages and libraries allow direct reading and writing from a shared
+ global memory, at the level of nodes' network cards.
+ This means that any process can read from the memory locally stored on
+ any node, without waiting for that node to check for incoming requests.
+\end_layout
+
+\begin_layout Section
+Implementation
+\end_layout
+
+\begin_layout Standard
+
+\series bold
+Note:
+\series default
+ the API is well documented in the class template declarations at the beginning
+ of each of the header files in the source tree.
+ In this document I describe just a subset of the member functions in each
+ class.
+\end_layout
+
+\begin_layout Subsection
+
+\family typewriter
+Vec
+\family default
+: a distributed dense vector
+\end_layout
+
+\begin_layout Standard
+The most obvious way to partition a dense vector across processors without
+ duplication is to split the indices as evenly as possible, and give each
+ rank a contiguous range.
+ This is not the only way to partition a vector, but it is the approach
+ that will be taken here.
+\begin_inset Foot
+status open
+
+\begin_layout Plain Layout
+Perhaps a future version of SLAPS will include other vector partitionings.
+\end_layout
+
+\end_inset
+
+ 
+\end_layout
+
+\begin_layout Subsubsection
+Data distribution
+\end_layout
+
+\begin_layout Standard
+UPC++ implements a partitioned global address space through global pointers
+ which affinity to one rank: the data is accessible from any rank through
+ remote put and get operations, but it resides locally in one place.
+ SLAPS thus stores the distributed vector as follows:
+\end_layout
+
+\begin_layout Enumerate
+Each rank computes the distribution of vector indices (using the 
+\family typewriter
+partition_array
+\family default
+ function in 
+\family typewriter
+utils.hpp
+\family default
+).
+\end_layout
+
+\begin_layout Enumerate
+Each rank then allocates its own chunk of shared global memory, with a size
+ corresponding to the rank's range of indices returned from the partitioning
+ in step 1.
+\end_layout
+
+\begin_layout Enumerate
+All ranks broadcast to all other ranks the global pointers to the shared
+ memory allocated in step 2, which are each saved locally in an array.
+\end_layout
+
+\begin_layout Standard
+Now, since every rank has the global pointers corresponding to every part
+ of the vector, any rank can access any part of the distributed vector through
+ UPC++ remote get and put calls.
+\end_layout
+
+\begin_layout Standard
+The partitioning of the vector is available to the user through several
+ functions.
+ One can simply call 
+\family typewriter
+partition_array
+\family default
+ directly to get the global partitioning, or one can use 
+\family typewriter
+Vec::get_local_range(I &start, I &end)
+\family default
+ and related functions to get the current rank's local ownership.
+ This is useful so that one can build a vector with minimal remote writes,
+ reducing unnecessary communication.
+\end_layout
+
+\begin_layout Subsubsection
+Implicit remote memory access
+\end_layout
+
+\begin_layout Standard
+The main way of implicitly accessing remote memory elements is through the
+ 
+\family typewriter
+Vec::operator[]
+\family default
+.
+ This method returns an object of type 
+\family typewriter
+RData
+\family default
+, which is defined in 
+\family typewriter
+proxy.hpp
+\family default
+.
+ The 
+\family typewriter
+RData
+\family default
+ object simply stores the global pointer to the value that has been requested.
+ Like everything in SLAPS, 
+\family typewriter
+RData
+\family default
+ is templated with index and data types 
+\family typewriter
+I
+\family default
+ and 
+\family typewriter
+D
+\family default
+.
+ The most important functions defined are:
+\end_layout
+
+\begin_layout Itemize
+
+\family typewriter
+RData::operator= (const D &val)
+\end_layout
+
+\begin_deeper
+\begin_layout Itemize
+Set the data represented by this 
+\family typewriter
+RData
+\family default
+ object.
+ The future for the write operation is chained to a global write future
+ which is a member of the governing 
+\family typewriter
+Vec
+\family default
+ class (see 
+\family typewriter
+Vec::set_wait()
+\family default
+ below).
+ These operations are not atomic, and care must be taken by the user to
+ coordinates writes from different ranks.
+\end_layout
+
+\end_deeper
+\begin_layout Itemize
+
+\family typewriter
+RData::prefetch()
+\end_layout
+
+\begin_deeper
+\begin_layout Itemize
+Request the value from UPC++, and store the future internally.
+\end_layout
+
+\end_deeper
+\begin_layout Itemize
+
+\family typewriter
+RData::get()
+\end_layout
+
+\begin_deeper
+\begin_layout Itemize
+Wait on the future stored from 
+\family typewriter
+prefetch()
+\family default
+ and return the value when it's ready.
+ If it has not been called, 
+\family typewriter
+prefetch()
+\family default
+ is called automatically.
+\end_layout
+
+\end_deeper
+\begin_layout Standard
+The following additional operations are defined in the 
+\family typewriter
+Vec
+\family default
+ class:
+\end_layout
+
+\begin_layout Itemize
+
+\family typewriter
+Vec::set_wait()
+\end_layout
+
+\begin_deeper
+\begin_layout Itemize
+Wait for all writes performed through 
+\family typewriter
+operator=
+\family default
+ to complete.
+ This is achieved by keeping an internal future in the 
+\family typewriter
+Vec
+\family default
+ class, and conjoining all futures from calls to 
+\family typewriter
+RData::operator=
+\family default
+ to it using 
+\family typewriter
+upcxx::when_all
+\family default
+.
+\end_layout
+
+\end_deeper
+\begin_layout Itemize
+
+\family typewriter
+Vec::read_range(I start, I end, D* buf)
+\end_layout
+
+\begin_layout Itemize
+
+\family typewriter
+Vec::read_range_begin(I start, I end, D* buf)
+\end_layout
+
+\begin_layout Itemize
+
+\family typewriter
+Vec::read_range_end()
+\end_layout
+
+\begin_deeper
+\begin_layout Itemize
+Request a range of contiguous values, even if they do not all reside on
+ the same rank.
+ The second and third functions represent the asynchronous version, in which
+ work can be done between the calls to 
+\family typewriter
+begin
+\family default
+ and 
+\family typewriter
+end
+\family default
+.
+\end_layout
+
+\end_deeper
+\begin_layout Standard
+Here is an example of remotely getting and setting data in SLAPS:
+\end_layout
+
+\begin_layout Verbatim
+Vec<int, double> v(100);
+\end_layout
+
+\begin_layout Verbatim
+
+\end_layout
+
+\begin_layout Verbatim
+/* get and set arbitrary values */
+\end_layout
+
+\begin_layout Verbatim
+v[52] = 3.14;              // set on any process 
+\end_layout
+
+\begin_layout Verbatim
+v.set_wait();              // wait for remote writes to complete
+\end_layout
+
+\begin_layout Verbatim
+
+\end_layout
+
+\begin_layout Verbatim
+double val = v[52].get();  // get from any process
+\end_layout
+
+\begin_layout Verbatim
+
+\end_layout
+
+\begin_layout Verbatim
+/* copy range into buf, even if it spans >1 processor */
+\end_layout
+
+\begin_layout Verbatim
+v.read_range(0, 25, buf);  // copy v[0:25] into buf
+\end_layout
+
+\begin_layout Verbatim
+
+\end_layout
+
+\begin_layout Verbatim
+/* all of the above can be done asynchronously */
+\end_layout
+
+\begin_layout Verbatim
+auto remote_val = v[21];
+\end_layout
+
+\begin_layout Verbatim
+remote_val.prefetch(); 
+\end_layout
+
+\begin_layout Verbatim
+/* do other work */ 
+\end_layout
+
+\begin_layout Verbatim
+double val2 = remote_val.get();
+\end_layout
+
+\begin_layout Subsubsection
+Vector functions
+\end_layout
+
+\begin_layout Standard
+Finally, two mathematical vector functions are implemented: 
+\end_layout
+
+\begin_layout Itemize
+
+\family typewriter
+Vec::norm()
+\family default
+, a vector 2-norm and 
+\end_layout
+
+\begin_layout Itemize
+
+\family typewriter
+Vec::dot(const Vec& b)
+\family default
+, the vector-vector dot product
+\end_layout
+
+\begin_layout Subsection
+
+\family typewriter
+Mat
+\family default
+: a distributed sparse matrix
+\end_layout
+
+\begin_layout Standard
+The other data structure implemented by SLAPS is the distributed sparse
+ matrix.
+ The matrix elements are not stored in globally shared memory, since for
+ the SpMV implementations below, matrix elements do not need to be communicated.
+ Instead the matrix is partitioned across processors, with each processor
+ storing its portion in local memory.
+\end_layout
+
+\begin_layout Subsubsection
+SpMV: Mechanics
+\end_layout
+
+\begin_layout Standard
+There are several possibilities for parallel sparse matrix data storage
+ formats and SpMV implementations.
+ The vector partioning described above suggests two implementations for
+ partitioning and SpMV: a row-based approach and a column-based approach
+ (see Figure 
+\begin_inset CommandInset ref
+LatexCommand ref
+reference "fig:rowcol"
+
+\end_inset
+
+).
+\end_layout
+
+\begin_layout Standard
+\begin_inset Float figure
+wide false
+sideways false
+status open
+
+\begin_layout Plain Layout
+\begin_inset Float figure
+wide false
+sideways false
+status open
+
+\begin_layout Plain Layout
+\align center
+\begin_inset Graphics
+	filename row_based.svg
+	width 40text%
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Plain Layout
+\begin_inset Caption Standard
+
+\begin_layout Plain Layout
+\begin_inset Quotes eld
+\end_inset
+
+Row-based
+\begin_inset Quotes erd
+\end_inset
+
+ method.
+ Reads from all processes; writes to self.
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\end_inset
+
+
+\begin_inset space \hfill{}
+\end_inset
+
+
+\begin_inset Float figure
+wide false
+sideways false
+status open
+
+\begin_layout Plain Layout
+\align center
+\begin_inset Graphics
+	filename column_based.svg
+	width 40text%
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Plain Layout
+\begin_inset Caption Standard
+
+\begin_layout Plain Layout
+\begin_inset Quotes eld
+\end_inset
+
+Column-based
+\begin_inset Quotes erd
+\end_inset
+
+ method.
+ Reads only from self; writes to all processes.
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Plain Layout
+\begin_inset Caption Standard
+
+\begin_layout Plain Layout
+\begin_inset CommandInset label
+LatexCommand label
+name "fig:rowcol"
+
+\end_inset
+
+Sparse matrix partitioning schemes for SpMV.
+ These figures graphically represent the operations 
+\begin_inset Formula $\boldsymbol{y}=A\boldsymbol{x}$
+\end_inset
+
+ (the product of matrix 
+\begin_inset Formula $A$
+\end_inset
+
+ and vector 
+\begin_inset Formula $\boldsymbol{x}$
+\end_inset
+
+ is being written into vector 
+\begin_inset Formula $\boldsymbol{y}$
+\end_inset
+
+).
+ Dotted lines represent partitioning across ranks (
+\begin_inset Formula $p=3$
+\end_inset
+
+ in this example).
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+For an MPI-based implementation of SpMV, the row-based formulation has some
+ subtleties.
+ Communication must be done in two steps that require coordination: first,
+ send the indices to the process that owns them, and second, receive the
+ data.
+ Both steps require the participation of both ranks.
+ The column-based method would seem superior, since one can read from one's
+ local array, then send computed values to another rank in one step.
+ The disadvantage of MPI in general, however, is that the other rank must
+ do extra work and coordination.
+ It needs to know when to receive the values and how many, and then needs
+ to sum the received values onto its array.
+\end_layout
+
+\begin_layout Standard
+In our one-sided PGAS implementation the situation is quite different.
+ We can do the remote reads required for the row-based method efficiently,
+ and then we only need to write to our local array, which is extremely efficient.
+ In fact, the column-based method is 
+\emph on
+worse
+\emph default
+ in a PGAS implementation, because several processes might attempt to write
+ to the same remote value at once—requiring atomic operations.
+ UPC++ doesn't even define atomic operations for floating point data types
+ yet.
+ It could be implemented using Remote Procedure Calls (RPC's), but that
+ defeats the benefit of having one-sided communication.
+\end_layout
+
+\begin_layout Standard
+So, it is clear that a row-based approach (read from all, write to self)
+ is optimal for our PGAS implementation.
+ With the partitioning set we still have some freedom to implement the actual
+ SpMV operation in various ways, and currently four different methods are
+ implemented in SLAPS.
+ These are accessible as derived classes of the base 
+\family typewriter
+Mat
+\family default
+ class, and are described below.
+\end_layout
+
+\begin_layout Subsubsection
+
+\family typewriter
+Mat
+\family default
+: the base matrix class
+\end_layout
+
+\begin_layout Standard
+The base class 
+\family typewriter
+Mat
+\family default
+ defines operations and member data useful for all matrix types.
+ It determines the partitioning of rows, and defines the user-visible functional
+ity for setting nonzero matrix elements.
+ 
+\end_layout
+
+\begin_layout Standard
+
+\series bold
+Row partitioning
+\end_layout
+
+\begin_layout Standard
+The partitioning of rows is done in the same way as for the 
+\family typewriter
+Vec
+\family default
+ class: using 
+\family typewriter
+partition_array
+\family default
+ from 
+\family typewriter
+utils.hpp
+\family default
+.
+\end_layout
+
+\begin_layout Standard
+\begin_inset VSpace bigskip
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+
+\series bold
+Setting matrix elements
+\end_layout
+
+\begin_layout Standard
+The setting of matrix elements occurs in two steps, only the first of which
+ is performed by the base 
+\family typewriter
+Mat
+\family default
+ class: 
+\end_layout
+
+\begin_layout Enumerate
+When users call 
+\family typewriter
+Mat::set_element(I row, I col, D val)
+\family default
+, the triple 
+\family typewriter
+(row, col, val)
+\family default
+ is appended to a list of elements stored by the 
+\family typewriter
+Mat
+\family default
+ class.
+ This storage corresponds to what is referred to as COO (coordinate) format
+ in the literature: just a 1-D array of coordinates and values.
+ This is good because it allows quick matrix building, with no requirements
+ that the users set elements in any sorted order.
+\end_layout
+
+\begin_layout Enumerate
+Derived classes define a 
+\family typewriter
+DerivedMat::setup()
+\family default
+ function, which takes the list of elements in COO format and translates
+ it into the storage format defined by the derived class (see below).
+\end_layout
+
+\begin_layout Standard
+
+\series bold
+Methods defined by derived classes
+\end_layout
+
+\begin_layout Standard
+Derived classes are expected to define the 
+\family typewriter
+setup()
+\family default
+ function just described, and also the SpMV implementations:
+\end_layout
+
+\begin_layout Itemize
+
+\family typewriter
+DerivedMat::dot(Vec& x, Vec& y)
+\family default
+, which performs the operation 
+\begin_inset Formula $\boldsymbol{y}=A\boldsymbol{x}$
+\end_inset
+
+
+\end_layout
+
+\begin_layout Itemize
+
+\family typewriter
+DerivedMat::plusdot(Vec& x, Vec& y)
+\family default
+, which performs the operation 
+\begin_inset Formula $\boldsymbol{y}=\boldsymbol{y}+A\boldsymbol{x}$
+\end_inset
+
+.
+ 
+\end_layout
+
+\begin_layout Subsubsection
+
+\family typewriter
+CSRMat
+\family default
+: a base class for matrices using CSR storage format
+\end_layout
+
+\begin_layout Standard
+Derives from: 
+\family typewriter
+Mat
+\end_layout
+
+\begin_layout Standard
+\begin_inset VSpace bigskip
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+CSR (compressed sparse row) format is one of the most ubiquitous sparse
+ matrix storage formats.
+ It stores a jagged 2D array, for which the first dimension is equal to
+ the number of local rows.
+ The second (jagged) dimension contains each of the nonzero matrix elements
+ in the corresponding row, stored as a 
+\family typewriter
+(col, val)
+\family default
+ pair.
+ Here 
+\family typewriter
+col
+\family default
+ is the index of the column where the matrix element 
+\family typewriter
+val
+\family default
+ sits.
+\end_layout
+
+\begin_layout Standard
+The 
+\family typewriter
+CSRMat
+\family default
+ class defines the function 
+\family typewriter
+CSRMat::setup()
+\family default
+ described earlier, which translates the raw COO format matrix elements
+ from calls to 
+\family typewriter
+Mat::set_element
+\family default
+ into CSR format.
+ It stores elements corresponding to local and remote reads from 
+\begin_inset Formula $\boldsymbol{x}$
+\end_inset
+
+ separately for efficiency.
+\end_layout
+
+\begin_layout Subsubsection
+
+\family typewriter
+NaiveCSRMat
+\family default
+: SpMV the naive way
+\end_layout
+
+\begin_layout Standard
+Derives from: 
+\family typewriter
+CSRMat
+\end_layout
+
+\begin_layout Standard
+\begin_inset VSpace bigskip
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+This class defines the 
+\family typewriter
+dot
+\family default
+ operations in the naive way: just iterate through the rows in the CSR format,
+ requesting remote values when we need them using the implicit remote gets
+ defined in the 
+\family typewriter
+Vec
+\family default
+ class.
+ This implementation is not expected to be very efficient because it does
+ not hide the latency inherent in the remote gets.
+\end_layout
+
+\begin_layout Subsubsection
+
+\family typewriter
+SingleCSRMat
+\family default
+: Naive SpMV, but with prefetching
+\end_layout
+
+\begin_layout Standard
+Derives from: 
+\family typewriter
+CSRMat
+\end_layout
+
+\begin_layout Standard
+\begin_inset VSpace bigskip
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+This class defines effectively the same implementation as 
+\family typewriter
+NaiveCSRMat
+\family default
+, except that it explicitly prefetches values of 
+\family typewriter
+x
+\family default
+ that will be needed soon.
+ It only uses x-values once before throwing them away, possibly requiring
+ the same value to be fetched many times.
+ Thus it may be inefficient in general, but efficient on very sparse matrices
+ in which only a few values are needed from 
+\family typewriter
+x
+\family default
+ and they are not reused.
+ 
+\end_layout
+
+\begin_layout Subsubsection
+
+\family typewriter
+BlockCSRMat
+\family default
+: Remote values prefetched in blocks
+\end_layout
+
+\begin_layout Standard
+Derives from: 
+\family typewriter
+CSRMat
+\end_layout
+
+\begin_layout Standard
+\begin_inset VSpace bigskip
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+This class prefetches entire portions of the 
+\family typewriter
+x
+\family default
+ array, using the asynchronous version of the 
+\family typewriter
+Vec::read_range()
+\family default
+ method, and multiplies these values agains all relevant matrix elements
+ at once.
+ These values are read regardless whether they need to be used (i.e.
+ the read is not packed, since that would require extra communication).
+ So, for denser matrices, this class is expect to outperform the 
+\family typewriter
+SingleCSRMat
+\family default
+, since it makes good reuse of values in the 
+\family typewriter
+x
+\family default
+ array.
+ However, for very sparse matrices, a lot of extra values are communicated,
+ so at some level of sparsity we expect 
+\family typewriter
+SingleCSRMat
+\family default
+ to be faster.
+\end_layout
+
+\begin_layout Subsubsection
+
+\family typewriter
+RCMat
+\family default
+: a custom storage format for PGAS SpMV
+\end_layout
+
+\begin_layout Standard
+Derives from: 
+\family typewriter
+Mat
+\end_layout
+
+\begin_layout Standard
+\begin_inset VSpace medskip
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+This is a custom format I implemented for this library, which I haven't
+ seen in any literature (though perhaps it has been implemented before and
+ I just haven't heard of it).
+ I named it RC format for 
+\begin_inset Quotes eld
+\end_inset
+
+row-partitioned columns.
+\begin_inset Quotes erd
+\end_inset
+
+
+\begin_inset Foot
+status open
+
+\begin_layout Plain Layout
+If anyone knows a name and previous implementation of this format, I would
+ love to hear it!
+\end_layout
+
+\end_inset
+
+ It combines the benefits of both the communication efficiency of 
+\begin_inset Quotes eld
+\end_inset
+
+
+\family typewriter
+Single
+\family default
+
+\begin_inset Quotes erd
+\end_inset
+
+ and value reuse of 
+\begin_inset Quotes eld
+\end_inset
+
+
+\family typewriter
+Block
+\family default
+
+\begin_inset Quotes erd
+\end_inset
+
+ implementations above.
+\end_layout
+
+\begin_layout Standard
+\begin_inset Float figure
+wide false
+sideways false
+status open
+
+\begin_layout Plain Layout
+\align center
+\begin_inset Graphics
+	filename RCMat.pdf
+	width 90text%
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Plain Layout
+\begin_inset Caption Standard
+
+\begin_layout Plain Layout
+\begin_inset CommandInset label
+LatexCommand label
+name "fig:RCMat"
+
+\end_inset
+
+The 
+\family typewriter
+RCMat
+\family default
+ data structure.
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+The data structure is visually represented in Figure 
+\begin_inset CommandInset ref
+LatexCommand ref
+reference "fig:RCMat"
+
+\end_inset
+
+.
+ It is contained as a single array (implemented using a 
+\family typewriter
+std::vector
+\family default
+) of index-pointer pairs.
+ The indices correspond to column numbers, and the pointers point to an
+ array of row index-value pairs.
+ The data structure is 
+\begin_inset Quotes eld
+\end_inset
+
+row-partitioned
+\begin_inset Quotes erd
+\end_inset
+
+ because the matrix elements contained in it still only correspond to those
+ that would be stored by the process in a normal block-row format.
+ 
+\end_layout
+
+\begin_layout Standard
+This data structure has numerous advantages:
+\end_layout
+
+\begin_layout Itemize
+For each (column index, pointer) pair, a single value from the 
+\family typewriter
+x
+\family default
+ array is multiplied by all the values in the (row index, value) array.
+ This makes provably optimal reuse of 
+\family typewriter
+x
+\family default
+ values: each value is fetched at most once, or zero times if it's not needed.
+\end_layout
+
+\begin_layout Itemize
+Since column indices are stored, no unnecessary 
+\family typewriter
+x
+\family default
+ values will be communicated.
+\end_layout
+
+\begin_layout Itemize
+For prefetching, the up-front storage of column indices makes it trivial
+ to calculate which indices will be needed soon, reducing computational
+ overhead.
+\end_layout
+
+\begin_layout Itemize
+Because matrix elements are still row-partitioned, all writes are done locally.
+\end_layout
+
+\begin_layout Standard
+I expect this data structure to perform well for both very sparse and less
+ sparse matrices: it makes optimal reuse of remote values, but also does
+ not do any unnecessary communication.
+\end_layout
+
+\begin_layout Section
+Performance Results
+\end_layout
+
+\begin_layout Standard
+These performance results were obtained using NERSC's Cori supercomputer.
+ The measurements were performed using 1 process per node, for up to 32
+ nodes.
+ The processor clock speed for the Haswell processors was limited to 2.3
+ GHz, to reduce variance from turbo boost.
+ For each plot, all data points were obtained with the same set of nodes
+ on Cori, to keep the effects of topology constant.
+ In addition to testing the performance of SLAPS, the performance of the
+ PETSc library's default SpMV was measured for comparison.
+\end_layout
+
+\begin_layout Standard
+For these preliminary tests, matrices with uniform nonzero density across
+ the row were used.
+ For future testing, it would be interesting to examine performance on matrices
+ which are clustered near the diagonal, or in bands.
+\end_layout
+
+\begin_layout Standard
+For reproducibility, the build parameters for PETSc and SLAPS can be found
+ in the source tree, under the 
+\begin_inset Quotes eld
+\end_inset
+
+
+\family typewriter
+benchmark/plots
+\family default
+
+\begin_inset Quotes erd
+\end_inset
+
+ directory.
+ The benchmark code itself is in 
+\begin_inset Quotes eld
+\end_inset
+
+
+\family typewriter
+benchmark/petsc
+\family default
+
+\begin_inset Quotes erd
+\end_inset
+
+ and 
+\begin_inset Quotes eld
+\end_inset
+
+
+\family typewriter
+benchmark/slaps
+\family default
+
+\begin_inset Quotes erd
+\end_inset
+
+.
+\end_layout
+
+\begin_layout Standard
+The plots are located in the appendix.
+\end_layout
+
+\begin_layout Subsection
+Density scaling
+\end_layout
+
+\begin_layout Standard
+The density scaling plot can be seen in Figure 
+\begin_inset CommandInset ref
+LatexCommand ref
+reference "fig:density"
+
+\end_inset
+
+.
+ It explores the behavior of the various implementations as the density
+ of nonzeros in the sparse matrix is varied.
+ This is not inherently a 
+\begin_inset Quotes eld
+\end_inset
+
+parallel
+\begin_inset Quotes erd
+\end_inset
+
+ benchmark, since each point was computed with the same number of nodes,
+ but is important for understanding the scaling behavior.
+\end_layout
+
+\begin_layout Standard
+The x-axis of the plot is nonzero density per row (i.e.
+ number of nonzeros, divided by length of row).
+ The y-axis is a measured of scaled computational time.
+ Since a less dense matrix would trivially run faster, the runtime was divided
+ by the density at each point to get a measure of 
+\begin_inset Quotes eld
+\end_inset
+
+run time per unit density,
+\begin_inset Quotes erd
+\end_inset
+
+ which should be proportional to FLOP/s.
+\begin_inset Foot
+status open
+
+\begin_layout Plain Layout
+In practice, the benchmark was just iterated a number of times equal to
+ the inverse density, to obtain equal computational work.
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+These data points were all collected using 32 nodes, 1 processor per node
+ on Cori Haswell.
+ The matrix dimension was held constant at 10,000.
+\end_layout
+
+\begin_layout Subsection
+Strong scaling
+\end_layout
+
+\begin_layout Standard
+The strong scaling plot can be seen in Figure 
+\begin_inset CommandInset ref
+LatexCommand ref
+reference "fig:strong"
+
+\end_inset
+
+.
+\end_layout
+
+\begin_layout Standard
+The x-axis is number of processors.
+ Each processor was on a separate node.
+ The y-axis is the 
+\begin_inset Quotes eld
+\end_inset
+
+parallel efficiency,
+\begin_inset Quotes erd
+\end_inset
+
+ scaled to the performance of the PETSc benchmark on one processor.
+ It is
+\end_layout
+
+\begin_layout Standard
+\begin_inset Formula 
+\[
+\text{parallel efficiency}=\frac{\left(\text{PETSc }p=1\text{ runtime}\right)}{\left(\text{runtime}\right)\times\left(\text{\# processors}\right)}
+\]
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+So, it's proportional to FLOP/s per processor.
+\end_layout
+
+\begin_layout Standard
+For this computation, the matrix dimension was 30,000.
+ It had a density of 
+\begin_inset Formula $10^{-2}$
+\end_inset
+
+ (one nonzero per 100 matrix elements), and the computation was iterated
+ 100 times for sampling.
+\end_layout
+
+\begin_layout Subsection
+Weak scaling
+\end_layout
+
+\begin_layout Standard
+The weak scaling plot can be seen in Figure 
+\begin_inset CommandInset ref
+LatexCommand ref
+reference "fig:weak"
+
+\end_inset
+
+.
+ 
+\end_layout
+
+\begin_layout Standard
+The x-axis is the number of processors, and the y-axis is wall time in seconds
+ (not scaled in any way).
+ The matrix dimension was set as 
+\begin_inset Formula $d=30,000\times\sqrt{p}$
+\end_inset
+
+, where 
+\begin_inset Formula $p$
+\end_inset
+
+ is the number of processors (giving a linear scaling of work with number
+ of processors).
+ The density was 
+\begin_inset Formula $10^{-2}$
+\end_inset
+
+, and the computation was iterated 50 times for sampling.
+\end_layout
+
+\begin_layout Section
+Discussion
+\end_layout
+
+\begin_layout Standard
+First, for density scaling in Figure 
+\begin_inset CommandInset ref
+LatexCommand ref
+reference "fig:density"
+
+\end_inset
+
+, I had predicted that the 
+\family typewriter
+BlockCSR
+\family default
+ implementation would perform well for denser matrices, but that the 
+\family typewriter
+RC
+\family default
+ format would overtake it at low matrix density, because it avoid unnecessary
+ communication of unused x-values.
+ However, it appears that the extra efficiency gained from communicating
+ x-values in blocks completely dominates the costs of communicating unnecessary
+ ones.
+\end_layout
+
+\begin_layout Standard
+In the strong scaling plot, Figure 
+\begin_inset CommandInset ref
+LatexCommand ref
+reference "fig:strong"
+
+\end_inset
+
+, both the 
+\family typewriter
+RC
+\family default
+ and especially the 
+\family typewriter
+SingleCSR
+\family default
+ formats do not appear to scale well.
+ This is probably because the density for this plot was relatively high
+ (
+\begin_inset Formula $10^{-2}$
+\end_inset
+
+), so communication of individual elements was a dominant cost.
+ The SLAPS 
+\family typewriter
+BlockCSR
+\family default
+ and PETSc implementations both see a jump in performance as the number
+ of processors increases from 1, perhaps due to better cache use.
+ As the number of nodes continues to increase, the efficiency decreases
+ slightly, presumably due to communication cost.
+ Interestingly, SLAPS 
+\family typewriter
+BlockCSR
+\family default
+ format surpasses PETSc's performance at 32 nodes, and this outperformance
+ was repeatable over several runs.
+ The noisy nature of the 
+\family typewriter
+BlockCSR
+\family default
+ strong scaling suggests that the block size needs to be tuned depending
+ on the number of local rows.
+ Hopefully that could lead to significantly better performance.
+\end_layout
+
+\begin_layout Standard
+In the weak scaling plot (Figure 
+\begin_inset CommandInset ref
+LatexCommand ref
+reference "fig:weak"
+
+\end_inset
+
+), we see that the 
+\family typewriter
+RC
+\family default
+ format does not scale too favorably with problem size.
+ Again, the overhead of individually requesting elements dominates.
+ The 
+\family typewriter
+BlockCSR
+\family default
+ and PETSc implementations do scale quite well: after an initial increase,
+ their weak scaling behavior becomes flat.
+\end_layout
+
+\begin_layout Standard
+It is notable that SLAPS outperforms PETSc for a range of nonzero densities
+ in Figure 
+\begin_inset CommandInset ref
+LatexCommand ref
+reference "fig:density"
+
+\end_inset
+
+.
+ This seems to be attributable to faster communication through UPC++.
+ Interestingly, however, in the weak scaling plot (Figure 
+\begin_inset CommandInset ref
+LatexCommand ref
+reference "fig:weak"
+
+\end_inset
+
+), we see PETSc outperforming SLAPS on a similar benchmark.
+ In both plots, the performance is consistent across several data points.
+ This appears to imply that both implementations are similar in their efficiency
+, and small differences, such as the problem size and density, as well as
+ topology of the compute nodes, can cause one to outperform the other.
+\end_layout
+
+\begin_layout Standard
+SLAPS in general shows that UPC++, and PGAS more broadly, has potential
+ to compete in performance with MPI for sparse matrix-dense vector multiplicatio
+n.
+ SLAPS is a preliminary implementation, and it would not be surprising to
+ see performance significantly increase as the implementation is tuned.
+ Especially helpful would be autotuning the prefetch block size in SLAPS
+ to hide all of the latency from UPC.
+ This is a clear next step in optimizing this library.
+ SLAPS has been enjoyable to build and use, especially since it uses modern
+ C++ (unlike PETSc, written in C).
+ I hope that it is useful as a benchmark of UPC++, and can find applications
+ in my research and others.
+\end_layout
+
+\begin_layout Section
+Appendix: Plots
+\end_layout
+
+\begin_layout Standard
+\align center
+\begin_inset Float figure
+placement H
+wide false
+sideways false
+status open
+
+\begin_layout Plain Layout
+\align center
+\begin_inset Graphics
+	filename sparsity.pdf
+	width 70text%
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Plain Layout
+\begin_inset Caption Standard
+
+\begin_layout Plain Layout
+\begin_inset CommandInset label
+LatexCommand label
+name "fig:density"
+
+\end_inset
+
+Density scaling behavior.
+ All points were computing on 32 nodes, with 1 process per node.
+ Matrix dimension was 10,000.
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+\begin_inset Float figure
+wide false
+sideways false
+status open
+
+\begin_layout Plain Layout
+\align center
+\begin_inset Float figure
+wide false
+sideways false
+status open
+
+\begin_layout Plain Layout
+\align center
+\begin_inset Graphics
+	filename strong.pdf
+	width 70text%
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Plain Layout
+\begin_inset Caption Standard
+
+\begin_layout Plain Layout
+\begin_inset CommandInset label
+LatexCommand label
+name "fig:strong"
+
+\end_inset
+
+Strong scaling behavior.
+ Matrix dimension 30,000, density 
+\begin_inset Formula $10^{-2}$
+\end_inset
+
+.
+ 100 iterations.
+ 1 process per node.
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Plain Layout
+\align center
+\begin_inset Float figure
+wide false
+sideways false
+status open
+
+\begin_layout Plain Layout
+\align center
+\begin_inset Graphics
+	filename weak.pdf
+	width 70text%
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Plain Layout
+\begin_inset Caption Standard
+
+\begin_layout Plain Layout
+\begin_inset CommandInset label
+LatexCommand label
+name "fig:weak"
+
+\end_inset
+
+Weak scaling behavior.
+ Density 
+\begin_inset Formula $10^{-2}$
+\end_inset
+
+, 50 iterations.
+ Matrix dimension scaled as 
+\begin_inset Formula $d=30,000\times\sqrt{p}$
+\end_inset
+
+.
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Plain Layout
+\begin_inset Caption Standard
+
+\begin_layout Plain Layout
+Benchmarking plots for SLAPS.
+ All benchmarks were performed on NERSC's Cori Haswell machine, with one
+ process per node.
+ Details are available in the source tree, under the 
+\family typewriter
+benchmark
+\family default
+ directory.
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\end_body
+\end_document

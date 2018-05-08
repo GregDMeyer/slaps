@@ -1,6 +1,3 @@
 *.o
 *.txt
-utils-tests
-vector-tests
-matrix-tests
 *.gch
